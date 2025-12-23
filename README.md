@@ -1,6 +1,8 @@
 # chexmix
 
-[![ci](https://github.com/RajeevAtla/chexmix/actions/workflows/ci.yml/badge.svg)](https://github.com/RajeevAtla/chexmix/actions/workflows/ci.yml)
+[![pytest](https://github.com/RajeevAtla/chexmix/actions/workflows/pytest.yml/badge.svg)](https://github.com/RajeevAtla/chexmix/actions/workflows/pytest.yml)
+[![ruff](https://github.com/RajeevAtla/chexmix/actions/workflows/ruff.yml/badge.svg)](https://github.com/RajeevAtla/chexmix/actions/workflows/ruff.yml)
+[![ty](https://github.com/RajeevAtla/chexmix/actions/workflows/ty.yml/badge.svg)](https://github.com/RajeevAtla/chexmix/actions/workflows/ty.yml)
 
 JAX/Flax-NNX + PGX + MCTS (mctx) self-play chess.
 
