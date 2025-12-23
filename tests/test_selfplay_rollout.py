@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import chex
 import jax
 import jax.numpy as jnp
@@ -11,6 +13,7 @@ from chess_ai.mcts.planner import MctsConfig, MctsOutput
 from chess_ai.selfplay.buffer import ReplayBuffer, ReplayConfig
 from chess_ai.selfplay.rollout import (
     SelfPlayConfig,
+    _tree_where,
     generate_selfplay_trajectories,
 )
 from chess_ai.selfplay.trajectory import Trajectory
@@ -174,3 +177,23 @@ def test_replay_buffer_wrap_and_capacity() -> None:
     valid_full = jnp.ones((1, 3), dtype=jnp.bool_)
     buffer_full.add(_make_traj(steps=3, valid_mask=valid_full))
     assert buffer_full.can_sample()
+
+
+def test_replay_buffer_insert_uninitialized() -> None:
+    buffer = ReplayBuffer(ReplayConfig(capacity=2, min_to_sample=1))
+    obs = jnp.zeros((1, 8, 8, 119), dtype=jnp.float32)
+    policy = jnp.zeros((1, 4672), dtype=jnp.float32)
+    outcome = jnp.zeros((1,), dtype=jnp.float32)
+    with pytest.raises(ValueError, match="storage not initialized"):
+        buffer._insert(obs, policy, outcome, count=1)
+
+
+def test_tree_where_scalar_branch() -> None:
+    mask = jnp.array([True, False])
+    new = {"x": jnp.array(1.0), "y": jnp.array([1.0, 2.0])}
+    old = {"x": jnp.array(2.0), "y": jnp.array([3.0, 4.0])}
+    out = _tree_where(
+        mask, cast(pgx.State, new), cast(pgx.State, old)
+    )
+    out_dict = cast(dict[str, Array], out)
+    assert out_dict["x"].shape == (2,)

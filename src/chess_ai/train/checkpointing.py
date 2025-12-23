@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import TypeGuard, cast
 
 import jax
 import optax
@@ -51,7 +51,18 @@ def _state_to_tree(state: TrainState) -> CheckpointTree:
     }
 
 
+def _is_value_dict(value: object) -> TypeGuard[dict[str, object]]:
+    if not isinstance(value, dict):
+        return False
+    return set(value.keys()) == {"value"}
+
+
 def _normalize_pytree(value: object) -> object:
+    if _is_value_dict(value):
+        value_dict = cast(dict[str, object], value)
+        leaf = value_dict["value"]
+        if isinstance(leaf, jax.Array):
+            return nnx.Param(leaf)
     if isinstance(value, list):
         return tuple(_normalize_pytree(item) for item in value)
     if isinstance(value, dict):
@@ -67,9 +78,15 @@ def _tree_to_state(tree: CheckpointTree) -> TrainState:
     if not isinstance(step_value, int):
         raise ValueError("Checkpoint missing integer step.")
     if isinstance(params, dict):
-        params_state = nnx.State(params)
+        normalized = _normalize_pytree(params)
+        if not isinstance(normalized, dict):
+            raise ValueError("Checkpoint params have invalid structure.")
+        params_state = nnx.State(normalized)
     elif isinstance(params, nnx.State):
-        params_state = params
+        normalized = _normalize_pytree(params.raw_mapping)
+        if not isinstance(normalized, dict):
+            raise ValueError("Checkpoint params have invalid structure.")
+        params_state = nnx.State(normalized)
     else:
         raise ValueError("Checkpoint missing params state.")
     if opt_state is None:
