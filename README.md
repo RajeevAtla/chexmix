@@ -1,5 +1,7 @@
 # chexmix
 
+[![ci](https://github.com/RajeevAtla/chexmix/actions/workflows/ci.yml/badge.svg)](https://github.com/RajeevAtla/chexmix/actions/workflows/ci.yml)
+
 JAX/Flax-NNX + PGX + MCTS (mctx) self-play chess.
 
 ## Install (CPU)
