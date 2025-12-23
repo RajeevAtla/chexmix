@@ -140,9 +140,7 @@ def test_tree_to_state_invalid_params_state_structure() -> None:
         CheckpointTree,
         {
             "step": 0,
-            "params": nnx.State(
-                {"value": jnp.array([1.0], dtype=jnp.float32)}
-            ),
+            "params": nnx.State({"value": jnp.array([1.0], dtype=jnp.float32)}),
             "opt_state": (),
             "rng_key": jax.random.PRNGKey(0),
         },
