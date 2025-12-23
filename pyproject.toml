@@ -1,0 +1,48 @@
+[project]
+name = "chexmix"
+version = "0.1.0"
+description = "JAX/Flax-NNX + PGX + MCTS (mctx) self-play chess."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "Contributors" }]
+dependencies = [
+  "jax>=0.4.30",
+  "flax>=0.10.0",
+  "optax>=0.2.4",
+  "orbax-checkpoint>=0.7.0",
+  "chex>=0.1.90",
+  "pgx>=2.0.0",
+  "mctx>=0.0.5",
+  "numpy>=2.0.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-cov>=5.0.0",
+  "ruff>=0.6.0",
+  "ty>=0.0.1",
+]
+cuda = [
+  "jax[cuda13]>=0.4.30",
+]
+
+[tool.uv]
+package = true
+
+[tool.pytest.ini_options]
+addopts = "-q --cov=chess_ai --cov-report=term-missing --cov-fail-under=100"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 80
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
