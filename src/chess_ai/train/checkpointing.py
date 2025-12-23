@@ -70,6 +70,39 @@ def _normalize_pytree(value: object) -> object:
     return value
 
 
+def _as_state_if_dict(value: object) -> object:
+    if isinstance(value, dict):
+        return nnx.State(value)
+    return value
+
+
+def _restore_opt_state(value: object) -> object:
+    if value is None:
+        return optax.EmptyState()
+    if isinstance(value, list):
+        return tuple(_restore_opt_state(item) for item in value)
+    if isinstance(value, tuple):
+        return tuple(_restore_opt_state(item) for item in value)
+    if isinstance(value, dict):
+        value_dict = cast(dict[str, object], value)
+        if set(value_dict.keys()) == {"count", "mu", "nu"}:
+            mu = _as_state_if_dict(_normalize_pytree(value_dict["mu"]))
+            nu = _as_state_if_dict(_normalize_pytree(value_dict["nu"]))
+            return optax.ScaleByAdamState(
+                count=cast(jax.Array, value_dict["count"]),
+                mu=cast(nnx.State, mu),
+                nu=cast(nnx.State, nu),
+            )
+        if set(value_dict.keys()) == {"count"}:
+            return optax.ScaleByScheduleState(
+                count=cast(jax.Array, value_dict["count"])
+            )
+        return {
+            key: _restore_opt_state(item) for key, item in value_dict.items()
+        }
+    return value
+
+
 def _tree_to_state(tree: CheckpointTree) -> TrainState:
     step_value = tree.get("step")
     params = tree.get("params")
@@ -91,7 +124,7 @@ def _tree_to_state(tree: CheckpointTree) -> TrainState:
         raise ValueError("Checkpoint missing params state.")
     if opt_state is None:
         raise ValueError("Checkpoint missing optimizer state.")
-    opt_state = cast(optax.OptState, _normalize_pytree(opt_state))
+    opt_state = cast(optax.OptState, _restore_opt_state(opt_state))
     if not isinstance(rng_key, jax.Array):
         raise ValueError("Checkpoint missing RNG key.")
     return TrainState(

@@ -192,8 +192,6 @@ def test_tree_where_scalar_branch() -> None:
     mask = jnp.array([True, False])
     new = {"x": jnp.array(1.0), "y": jnp.array([1.0, 2.0])}
     old = {"x": jnp.array(2.0), "y": jnp.array([3.0, 4.0])}
-    out = _tree_where(
-        mask, cast(pgx.State, new), cast(pgx.State, old)
-    )
+    out = _tree_where(mask, cast(pgx.State, new), cast(pgx.State, old))
     out_dict = cast(dict[str, Array], out)
     assert out_dict["x"].shape == (2,)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import chex
 import jax
@@ -10,6 +11,8 @@ from flax import nnx
 
 from chess_ai.train.checkpointing import (
     CheckpointConfig,
+    CheckpointTree,
+    _tree_to_state,
     make_checkpoint_manager,
     restore_latest,
     save_checkpoint,
@@ -69,3 +72,58 @@ def test_restore_latest_missing(tmp_path: Path) -> None:
     )
     with pytest.raises(FileNotFoundError):
         _ = restore_latest(manager)
+
+
+def test_tree_to_state_missing_step() -> None:
+    tree = cast(
+        CheckpointTree,
+        {
+            "params": nnx.State({}),
+            "opt_state": (),
+            "rng_key": jax.random.PRNGKey(0),
+        },
+    )
+    with pytest.raises(ValueError, match="integer step"):
+        _ = _tree_to_state(tree)
+
+
+def test_tree_to_state_invalid_params_structure() -> None:
+    tree = cast(
+        CheckpointTree,
+        {
+            "step": 0,
+            "params": {"value": jnp.array([1.0], dtype=jnp.float32)},
+            "opt_state": (),
+            "rng_key": jax.random.PRNGKey(0),
+        },
+    )
+    with pytest.raises(ValueError, match="invalid structure"):
+        _ = _tree_to_state(tree)
+
+
+def test_tree_to_state_missing_params() -> None:
+    tree = cast(
+        CheckpointTree,
+        {
+            "step": 0,
+            "params": 1,
+            "opt_state": (),
+            "rng_key": jax.random.PRNGKey(0),
+        },
+    )
+    with pytest.raises(ValueError, match="params state"):
+        _ = _tree_to_state(tree)
+
+
+def test_tree_to_state_missing_opt_state() -> None:
+    tree = cast(
+        CheckpointTree,
+        {
+            "step": 0,
+            "params": nnx.State({}),
+            "opt_state": None,
+            "rng_key": jax.random.PRNGKey(0),
+        },
+    )
+    with pytest.raises(ValueError, match="optimizer state"):
+        _ = _tree_to_state(tree)

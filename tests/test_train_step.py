@@ -118,11 +118,22 @@ def test_train_step_single_device() -> None:
             model=model, tx=tx, state=s, batch=b, loss_cfg=loss_cfg
         )
 
-    p_step = jax.pmap(step_fn, axis_name="data", devices=[devices[0]])
-    state_repl = jax.device_put_replicated(state, [devices[0]])
-    batch_repl = jax.device_put_replicated(batch, [devices[0]])
-    out = p_step(state_repl, batch_repl)
-
-    state_out, losses_out = jax.tree_util.tree_map(lambda x: x[0], out)
+    p_step = jax.pmap(
+        step_fn,
+        axis_name="data",
+        in_axes=(None, 0),
+        out_axes=(None, None),
+        devices=[devices[0]],
+    )
+    batch_repl = jax.tree_util.tree_map(lambda x: x[None, ...], batch)
+    state_out, losses_out = p_step(state, batch_repl)
     chex.assert_trees_all_close(state_out.params, state.params)
     assert jnp.isfinite(losses_out.total).all()
+
+
+def test_train_state_tree_unflatten_invalid_step() -> None:
+    _model, state, _ = _make_state()
+    with pytest.raises(TypeError, match="Invalid step type"):
+        _ = TrainState.tree_unflatten(
+            None, ("bad", state.params, state.opt_state, state.rng_key)
+        )
