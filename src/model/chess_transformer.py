@@ -20,8 +20,8 @@ from __future__ import annotations
 import jax.numpy as jnp
 from flax import nnx
 
-from chess_ai.model.nnx_blocks import TransformerBlock, TransformerConfig
-from chess_ai.types import Array, PolicyValue
+from chex_types import Array, PolicyValue
+from model.nnx_blocks import TransformerBlock, TransformerConfig
 
 
 class ChessTransformer(nnx.Module):

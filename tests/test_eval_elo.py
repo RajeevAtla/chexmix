@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from chess_ai.eval.elo import expected_score, update_elo
+from eval.elo import expected_score, update_elo
 
 
 def test_expected_score_symmetry() -> None:

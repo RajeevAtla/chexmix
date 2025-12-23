@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from chess_ai.paths import RunPaths
-from chess_ai.train.logging import Metrics, write_metrics_snapshot
+from paths import RunPaths
+from train.logging import Metrics, write_metrics_snapshot
 
 
 def test_write_metrics_snapshot(tmp_path: Path) -> None:

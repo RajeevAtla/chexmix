@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from chess_ai.toml_io import (
+from toml_io import (
     TomlValue,
     _validate_toml_dict,
     dump_toml,
@@ -53,7 +53,7 @@ def test_validate_rejects_unsupported_types() -> None:
 def test_load_toml_rejects_non_string_keys(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import chess_ai.toml_io as toml_io
+    import toml_io as toml_io
 
     path = tmp_path / "bad.toml"
     path.write_text("", encoding="utf-8")

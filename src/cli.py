@@ -12,10 +12,10 @@ import argparse
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from chess_ai.paths import RunPaths
-from chess_ai.pgn.writer import PgnHeaders, format_pgn, write_pgn_file
-from chess_ai.toml_io import TomlValue, load_toml, save_toml
-from chess_ai.train.logging import Metrics, write_metrics_snapshot
+from paths import RunPaths
+from pgn.writer import PgnHeaders, format_pgn, write_pgn_file
+from toml_io import TomlValue, load_toml, save_toml
+from train.logging import Metrics, write_metrics_snapshot
 
 
 def build_parser() -> argparse.ArgumentParser:

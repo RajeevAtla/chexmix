@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 
-from chess_ai.types import Array
+from chex_types import Array
 
 
 @dataclass(frozen=True, slots=True)

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from chess_ai.cli import build_parser, main
-from chess_ai.toml_io import save_toml
+from cli import build_parser, main
+from toml_io import save_toml
 
 
 def test_build_parser_train_args() -> None:

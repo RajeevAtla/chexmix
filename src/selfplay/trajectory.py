@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from chess_ai.types import Array
+from chex_types import Array
 
 
 @dataclass(frozen=True, slots=True)

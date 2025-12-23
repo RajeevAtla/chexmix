@@ -13,7 +13,7 @@ import jax
 import optax
 from flax import nnx
 
-from chess_ai.types import PRNGKey, Step
+from chex_types import PRNGKey, Step
 
 
 @jax.tree_util.register_pytree_node_class

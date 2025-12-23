@@ -9,11 +9,11 @@ import optax
 import pytest
 from flax import nnx
 
-from chess_ai.train.learner import _params_l2, train_step
-from chess_ai.train.losses import LossConfig, Losses
-from chess_ai.train.optimizer import OptimConfig, make_optimizer
-from chess_ai.train.state import TrainState
-from chess_ai.types import Array, PolicyValue, Step
+from chex_types import Array, PolicyValue, Step
+from train.learner import _params_l2, train_step
+from train.losses import LossConfig, Losses
+from train.optimizer import OptimConfig, make_optimizer
+from train.state import TrainState
 
 
 class LinearModel(nnx.Module):
@@ -27,9 +27,9 @@ class LinearModel(nnx.Module):
         return PolicyValue(policy_logits=logits, value=value)
 
 
-def _make_state() -> tuple[
-    LinearModel, TrainState, optax.GradientTransformation
-]:
+def _make_state() -> (
+    tuple[LinearModel, TrainState, optax.GradientTransformation]
+):
     model = LinearModel(rngs=nnx.Rngs(0))
     params = nnx.state(model)
     tx, _ = make_optimizer(

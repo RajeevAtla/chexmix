@@ -17,9 +17,9 @@ import jax.numpy as jnp
 import optax
 from flax import nnx
 
-from chess_ai.train.losses import LossConfig, Losses, compute_losses
-from chess_ai.train.state import TrainState
-from chess_ai.types import Array, Step
+from chex_types import Array, Step
+from train.losses import LossConfig, Losses, compute_losses
+from train.state import TrainState
 
 
 @dataclass(frozen=True, slots=True)

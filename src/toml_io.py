@@ -77,7 +77,7 @@ def _validate_toml_dict(raw: dict[str, object]) -> dict[str, TomlValue]:
 
 
 def _validate_toml_value(value: object) -> TomlValue:
-    if isinstance(value, (str, int, float, bool)):
+    if isinstance(value, str | int | float | bool):
         return value
 
     if isinstance(value, list):
@@ -124,7 +124,7 @@ def _format_value(value: TomlValue) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
 
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return repr(value)
 
     if isinstance(value, str):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from chess_ai.env.pgx_chess import (
+from env.pgx_chess import (
     compile_pgx_fns,
     make_chess_env,
     mask_illegal_logits,

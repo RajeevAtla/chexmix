@@ -16,9 +16,9 @@ import jax.numpy as jnp
 import pgx
 from flax import nnx
 
-from chess_ai.mcts.planner import MctsConfig, MctsOutput, run_mcts
-from chess_ai.selfplay.trajectory import Trajectory
-from chess_ai.types import Array, PRNGKey
+from chex_types import Array, PRNGKey
+from mcts.planner import MctsConfig, MctsOutput, run_mcts
+from selfplay.trajectory import Trajectory
 
 
 @dataclass(frozen=True, slots=True)

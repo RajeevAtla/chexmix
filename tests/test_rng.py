@@ -3,8 +3,8 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from chess_ai.rng import RngStream
-from chess_ai.types import Step
+from chex_types import Step
+from rng import RngStream
 
 
 def test_rng_stream_determinism() -> None:

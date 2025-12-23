@@ -11,7 +11,8 @@ import orbax.checkpoint as ocp
 import pytest
 from flax import nnx
 
-from chess_ai.train.checkpointing import (
+from chex_types import Array, Step
+from train.checkpointing import (
     CheckpointConfig,
     CheckpointTree,
     _as_state_if_dict,
@@ -23,9 +24,8 @@ from chess_ai.train.checkpointing import (
     restore_latest,
     save_checkpoint,
 )
-from chess_ai.train.optimizer import OptimConfig, make_optimizer
-from chess_ai.train.state import TrainState
-from chess_ai.types import Array, Step
+from train.optimizer import OptimConfig, make_optimizer
+from train.state import TrainState
 
 
 class TinyModel(nnx.Module):

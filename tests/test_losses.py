@@ -3,7 +3,7 @@ from __future__ import annotations
 import chex
 import jax.numpy as jnp
 
-from chess_ai.train.losses import LossConfig, compute_losses
+from train.losses import LossConfig, compute_losses
 
 
 def test_compute_losses_masking_and_values() -> None:

@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from chess_ai.paths import RunPaths
-from chess_ai.toml_io import TomlValue, save_toml
+from paths import RunPaths
+from toml_io import TomlValue, save_toml
 
 
 @dataclass(frozen=True, slots=True)

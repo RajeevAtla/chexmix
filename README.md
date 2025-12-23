@@ -19,13 +19,13 @@ uv sync --group cuda --group dev
 ## Train
 
 ```bash
-uv run python -m chess_ai.cli train --config config/default.toml
+PYTHONPATH=src uv run python -m cli train --config config/default.toml
 ```
 
 ## Tests
 
 ```bash
-uv run pytest
+uv run python -m pytest
 ```
 
 ## Lint and type check
@@ -35,3 +35,4 @@ uv run ruff check .
 uv run ruff format .
 uv run ty check
 ```
+

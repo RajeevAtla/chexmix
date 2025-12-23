@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from chess_ai.eval.arena import MatchResult
+from eval.arena import MatchResult
 
 
 def test_match_result_summary() -> None:

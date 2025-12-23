@@ -5,9 +5,9 @@ import jax.numpy as jnp
 import pgx
 from flax import nnx
 
-from chess_ai.mcts.planner import MctsConfig, run_mcts
-from chess_ai.model.chess_transformer import ChessTransformer
-from chess_ai.model.nnx_blocks import TransformerConfig
+from mcts.planner import MctsConfig, run_mcts
+from model.chess_transformer import ChessTransformer
+from model.nnx_blocks import TransformerConfig
 
 
 def test_mcts_outputs_legal_actions_and_weights() -> None:

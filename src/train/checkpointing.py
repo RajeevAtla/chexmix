@@ -16,8 +16,8 @@ import optax
 import orbax.checkpoint as ocp
 from flax import nnx
 
-from chess_ai.train.state import TrainState
-from chess_ai.types import PRNGKey, Step
+from chex_types import PRNGKey, Step
+from train.state import TrainState
 
 
 @dataclass(frozen=True, slots=True)

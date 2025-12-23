@@ -23,8 +23,8 @@ import pgx
 from flax import nnx
 from mctx._src import base as mctx_base
 
-from chess_ai.env.pgx_chess import mask_illegal_logits
-from chess_ai.types import Array, PolicyValue, PRNGKey
+from chex_types import Array, PolicyValue, PRNGKey
+from env.pgx_chess import mask_illegal_logits
 
 
 @dataclass(frozen=True, slots=True)

@@ -15,7 +15,9 @@ set -euo pipefail
 
 export XLA_FLAGS="--xla_gpu_enable_triton_gemm=false"
 export JAX_PLATFORM_NAME="gpu"
+export PYTHONPATH="${PWD}/src"
 
 uv sync --group cuda --group dev
 
-uv run python -m chess_ai.cli train --config config/default.toml
+uv run python -m cli train --config config/default.toml
+

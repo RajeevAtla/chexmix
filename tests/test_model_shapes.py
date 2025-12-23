@@ -3,8 +3,8 @@ from __future__ import annotations
 import jax.numpy as jnp
 from flax import nnx
 
-from chess_ai.model.chess_transformer import ChessTransformer
-from chess_ai.model.nnx_blocks import MultiHeadSelfAttention, TransformerConfig
+from model.chess_transformer import ChessTransformer
+from model.nnx_blocks import MultiHeadSelfAttention, TransformerConfig
 
 
 def test_chess_transformer_shapes_and_determinism() -> None:

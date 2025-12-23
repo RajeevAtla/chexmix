@@ -64,4 +64,4 @@ jobs:
               cache-python: "true"
 
       - run: uv sync --group dev
-      - run: uv run pytest
+      - run: uv run python -m pytest

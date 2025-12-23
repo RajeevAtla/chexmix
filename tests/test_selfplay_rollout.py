@@ -9,15 +9,15 @@ import pgx
 import pytest
 from flax import nnx
 
-from chess_ai.mcts.planner import MctsConfig, MctsOutput
-from chess_ai.selfplay.buffer import ReplayBuffer, ReplayConfig
-from chess_ai.selfplay.rollout import (
+from chex_types import Array, PolicyValue
+from mcts.planner import MctsConfig, MctsOutput
+from selfplay.buffer import ReplayBuffer, ReplayConfig
+from selfplay.rollout import (
     SelfPlayConfig,
     _tree_where,
     generate_selfplay_trajectories,
 )
-from chess_ai.selfplay.trajectory import Trajectory
-from chess_ai.types import Array, PolicyValue
+from selfplay.trajectory import Trajectory
 
 
 class DummyModel(nnx.Module):
@@ -54,7 +54,7 @@ def _fake_run_mcts(
 
 def test_selfplay_rollout_determinism(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "chess_ai.selfplay.rollout.run_mcts",
+        "selfplay.rollout.run_mcts",
         _fake_run_mcts,
     )
     env = pgx.make("chess")

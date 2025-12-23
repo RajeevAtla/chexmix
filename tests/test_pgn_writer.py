@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from chess_ai.pgn.encode import DecodedMove, decode_action
-from chess_ai.pgn.writer import PgnHeaders, format_pgn, write_pgn_file
+from pgn.encode import DecodedMove, decode_action
+from pgn.writer import PgnHeaders, format_pgn, write_pgn_file
 
 
 def test_decode_action_basic_planes() -> None:

@@ -14,8 +14,8 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 
-from chess_ai.selfplay.trajectory import Trajectory
-from chess_ai.types import Array, PRNGKey
+from chex_types import Array, PRNGKey
+from selfplay.trajectory import Trajectory
 
 
 @dataclass(frozen=True, slots=True)

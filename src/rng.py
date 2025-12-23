@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import jax
 
-from chess_ai.types import PRNGKey, Step
+from chex_types import PRNGKey, Step
 
 
 @dataclass(frozen=True, slots=True)
