@@ -100,3 +100,29 @@ def test_train_step_pmap_equivalence() -> None:
 
     chex.assert_trees_all_close(state_multi_0.params, state_single_0.params)
     chex.assert_trees_all_close(losses_multi_0.total, losses_single_0.total)
+
+
+def test_train_step_single_device() -> None:
+    devices = jax.devices()
+    if not devices:
+        pytest.skip("No JAX devices available.")
+
+    model, state, tx = _make_state()
+    batch = _make_batch(batch_size=1)
+    loss_cfg = LossConfig(value_loss_weight=1.0, weight_decay=0.0)
+
+    def step_fn(
+        s: TrainState, b: dict[str, Array]
+    ) -> tuple[TrainState, Losses]:
+        return train_step(
+            model=model, tx=tx, state=s, batch=b, loss_cfg=loss_cfg
+        )
+
+    p_step = jax.pmap(step_fn, axis_name="data", devices=[devices[0]])
+    state_repl = jax.device_put_replicated(state, [devices[0]])
+    batch_repl = jax.device_put_replicated(batch, [devices[0]])
+    out = p_step(state_repl, batch_repl)
+
+    state_out, losses_out = jax.tree_util.tree_map(lambda x: x[0], out)
+    chex.assert_trees_all_close(state_out.params, state.params)
+    assert jnp.isfinite(losses_out.total).all()

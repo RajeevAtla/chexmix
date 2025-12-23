@@ -119,3 +119,58 @@ def test_replay_buffer_sample() -> None:
     assert batch["policy_targets"].shape == (1, 4672)
     assert batch["outcome"].shape == (1,)
     assert batch["valid"].shape == (1,)
+
+
+def _make_traj(
+    *,
+    steps: int,
+    valid_mask: Array,
+) -> Trajectory:
+    obs = jnp.zeros((1, steps, 8, 8, 119), dtype=jnp.float32)
+    policy = jnp.full((1, steps, 4672), 1.0 / 4672.0, dtype=jnp.float32)
+    player_id = jnp.zeros((1, steps), dtype=jnp.int32)
+    outcome = jnp.zeros((1, steps), dtype=jnp.float32)
+    return Trajectory(
+        obs=obs,
+        policy_targets=policy,
+        player_id=player_id,
+        valid=valid_mask,
+        outcome=outcome,
+    )
+
+
+def test_replay_buffer_empty_valid_add() -> None:
+    buffer = ReplayBuffer(ReplayConfig(capacity=4, min_to_sample=1))
+    valid = jnp.zeros((1, 2), dtype=jnp.bool_)
+    traj = _make_traj(steps=2, valid_mask=valid)
+    buffer.add(traj)
+    assert not buffer.can_sample()
+
+
+def test_replay_buffer_sample_empty_raises() -> None:
+    buffer = ReplayBuffer(ReplayConfig(capacity=4, min_to_sample=1))
+    with pytest.raises(ValueError, match="ReplayBuffer is empty"):
+        _ = buffer.sample_batch(jax.random.PRNGKey(0), batch_size=1)
+
+
+def test_replay_buffer_size_zero_raises() -> None:
+    buffer = ReplayBuffer(ReplayConfig(capacity=4, min_to_sample=1))
+    valid = jnp.ones((1, 1), dtype=jnp.bool_)
+    traj = _make_traj(steps=1, valid_mask=valid)
+    buffer.add(traj)
+    buffer._size = 0
+    with pytest.raises(ValueError, match="ReplayBuffer is empty"):
+        _ = buffer.sample_batch(jax.random.PRNGKey(0), batch_size=1)
+
+
+def test_replay_buffer_wrap_and_capacity() -> None:
+    buffer = ReplayBuffer(ReplayConfig(capacity=3, min_to_sample=1))
+    valid = jnp.ones((1, 2), dtype=jnp.bool_)
+    buffer.add(_make_traj(steps=2, valid_mask=valid))
+    buffer.add(_make_traj(steps=2, valid_mask=valid))
+    assert buffer.can_sample()
+
+    buffer_full = ReplayBuffer(ReplayConfig(capacity=2, min_to_sample=1))
+    valid_full = jnp.ones((1, 3), dtype=jnp.bool_)
+    buffer_full.add(_make_traj(steps=3, valid_mask=valid_full))
+    assert buffer_full.can_sample()

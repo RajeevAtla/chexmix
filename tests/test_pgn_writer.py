@@ -21,6 +21,13 @@ def test_decode_action_basic_planes() -> None:
     assert (knight_move.to_file, knight_move.to_rank) == (2, 1)
 
 
+def test_decode_action_promotion_plane() -> None:
+    promo = decode_action(64)
+    assert promo.promo == "r"
+    assert promo.from_file == 0
+    assert promo.from_rank == 0
+
+
 def test_decode_action_invalid() -> None:
     try:
         _ = decode_action(-1)

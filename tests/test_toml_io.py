@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from chess_ai.toml_io import (
+    TomlValue,
     _validate_toml_dict,
     dump_toml,
     load_toml,
@@ -46,3 +48,21 @@ def test_validate_rejects_unsupported_types() -> None:
 
     with pytest.raises(ValueError):
         _validate_toml_dict({"bad": [1, {"nested": 2}]})
+
+
+def test_load_toml_rejects_non_string_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import chess_ai.toml_io as toml_io
+
+    path = tmp_path / "bad.toml"
+    path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(toml_io.tomllib, "loads", lambda _: {1: "bad"})
+    with pytest.raises(ValueError, match="string keys"):
+        _ = toml_io.load_toml(path)
+
+
+def test_dump_toml_rejects_invalid_value() -> None:
+    with pytest.raises(ValueError, match="unsupported TOML value type"):
+        bad = cast(dict[str, TomlValue], {"bad": object()})
+        _ = dump_toml(bad)

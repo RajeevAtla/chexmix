@@ -19,9 +19,9 @@ from typing import cast
 import jax
 import jax.numpy as jnp
 import mctx
-from mctx._src import base as mctx_base
 import pgx
 from flax import nnx
+from mctx._src import base as mctx_base
 
 from chess_ai.env.pgx_chess import mask_illegal_logits
 from chess_ai.types import Array, PolicyValue, PRNGKey
