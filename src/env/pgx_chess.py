@@ -10,20 +10,21 @@ The wrapper exists to:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 import jax
 import jax.numpy as jnp
 import pgx
 
-from chex_types import Array
+from chex_types import Array, PRNGKey
 
 
 @dataclass(frozen=True, slots=True)
 class PgxFns:
     """JIT-compiled, vectorized PGX callables."""
 
-    init_fn: callable
-    step_fn: callable
+    init_fn: Callable[[PRNGKey], pgx.State]
+    step_fn: Callable[[pgx.State, Array], pgx.State]
 
 
 def make_chess_env() -> pgx.Env:
@@ -45,7 +46,9 @@ def compile_pgx_fns(env: pgx.Env) -> PgxFns:
     return PgxFns(init_fn=init_fn, step_fn=step_fn)
 
 
-def mask_illegal_logits(policy_logits: Array, legal_action_mask: Array) -> Array:
+def mask_illegal_logits(
+    policy_logits: Array, legal_action_mask: Array
+) -> Array:
     """Mask illegal actions by setting logits to a large negative value.
 
     Args:
@@ -57,6 +60,3 @@ def mask_illegal_logits(policy_logits: Array, legal_action_mask: Array) -> Array
     """
     neg_inf = jnp.finfo(policy_logits.dtype).min
     return jnp.where(legal_action_mask, policy_logits, neg_inf)
-
-
-
