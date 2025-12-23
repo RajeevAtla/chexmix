@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import chex
 import jax
 import jax.numpy as jnp
@@ -135,5 +137,6 @@ def test_train_state_tree_unflatten_invalid_step() -> None:
     _model, state, _ = _make_state()
     with pytest.raises(TypeError, match="Invalid step type"):
         _ = TrainState.tree_unflatten(
-            None, ("bad", state.params, state.opt_state, state.rng_key)
+            cast(int, "bad"),
+            (state.params, state.opt_state, state.rng_key),
         )

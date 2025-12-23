@@ -20,6 +20,7 @@ class LossConfig:
     weight_decay: float
 
 
+@jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True, slots=True)
 class Losses:
     """Computed losses."""
@@ -28,6 +29,17 @@ class Losses:
     policy: Array
     value: Array
     l2: Array
+
+    def tree_flatten(self) -> tuple[tuple[Array, ...], None]:
+        return (self.total, self.policy, self.value, self.l2), None
+
+    @classmethod
+    def tree_unflatten(
+        cls, aux_data: None, children: tuple[Array, ...]
+    ) -> Losses:
+        del aux_data
+        total, policy, value, l2 = children
+        return cls(total=total, policy=policy, value=value, l2=l2)
 
 
 def compute_losses(
