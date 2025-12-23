@@ -6,12 +6,18 @@ from typing import cast
 import chex
 import jax
 import jax.numpy as jnp
+import optax
+import orbax.checkpoint as ocp
 import pytest
 from flax import nnx
 
 from chess_ai.train.checkpointing import (
     CheckpointConfig,
     CheckpointTree,
+    _as_state_if_dict,
+    _is_value_dict,
+    _normalize_pytree,
+    _restore_opt_state,
     _tree_to_state,
     make_checkpoint_manager,
     restore_latest,
@@ -127,3 +133,59 @@ def test_tree_to_state_missing_opt_state() -> None:
     )
     with pytest.raises(ValueError, match="optimizer state"):
         _ = _tree_to_state(tree)
+
+
+def test_tree_to_state_invalid_params_state_structure() -> None:
+    tree = cast(
+        CheckpointTree,
+        {
+            "step": 0,
+            "params": nnx.State(
+                {"value": jnp.array([1.0], dtype=jnp.float32)}
+            ),
+            "opt_state": (),
+            "rng_key": jax.random.PRNGKey(0),
+        },
+    )
+    with pytest.raises(ValueError, match="invalid structure"):
+        _ = _tree_to_state(tree)
+
+
+def test_tree_to_state_missing_rng_key() -> None:
+    tree = cast(
+        CheckpointTree,
+        {
+            "step": 0,
+            "params": nnx.State({}),
+            "opt_state": (),
+            "rng_key": 123,
+        },
+    )
+    with pytest.raises(ValueError, match="RNG key"):
+        _ = _tree_to_state(tree)
+
+
+def test_restore_latest_invalid_mapping() -> None:
+    class DummyManager:
+        def latest_step(self) -> int:
+            return 0
+
+        def restore(self, step: int) -> int:
+            del step
+            return 123
+
+    with pytest.raises(ValueError, match="not a mapping"):
+        _ = restore_latest(cast(ocp.CheckpointManager, DummyManager()))
+
+
+def test_checkpoint_helpers_paths() -> None:
+    assert not _is_value_dict(1)
+    assert _normalize_pytree([1, 2]) == (1, 2)
+    assert _normalize_pytree({"a": 1}) == {"a": 1}
+    assert _as_state_if_dict(1) == 1
+    restored = _restore_opt_state((None, None))
+    assert isinstance(restored, tuple)
+    assert isinstance(restored[0], optax.EmptyState)
+    fallback = _restore_opt_state({"foo": 1})
+    fallback_dict = cast(dict[str, int], fallback)
+    assert fallback_dict["foo"] == 1

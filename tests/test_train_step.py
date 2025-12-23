@@ -9,7 +9,7 @@ import optax
 import pytest
 from flax import nnx
 
-from chess_ai.train.learner import train_step
+from chess_ai.train.learner import _params_l2, train_step
 from chess_ai.train.losses import LossConfig, Losses
 from chess_ai.train.optimizer import OptimConfig, make_optimizer
 from chess_ai.train.state import TrainState
@@ -140,3 +140,9 @@ def test_train_state_tree_unflatten_invalid_step() -> None:
             cast(int, "bad"),
             (state.params, state.opt_state, state.rng_key),
         )
+
+
+def test_params_l2_empty_state() -> None:
+    empty = nnx.State({})
+    value = _params_l2(empty)
+    assert value == 0.0
