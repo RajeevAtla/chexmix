@@ -1,0 +1,42 @@
+[run]
+name = "default"
+seed = 42
+devices = 4
+log_every_steps = 50
+checkpoint_every_steps = 500
+pgn_every_games = 50
+max_runtime_minutes = 720
+
+[env]
+id = "chess"
+max_moves = 512
+
+[model]
+d_model = 512
+n_layers = 12
+n_heads = 8
+mlp_ratio = 4
+dropout_rate = 0.0
+
+[mcts]
+num_simulations = 128
+max_depth = 128
+c_puct = 1.5
+gumbel_scale = 1.0
+temperature_moves = 20
+temperature_initial = 1.0
+temperature_final = 0.0
+
+[selfplay]
+games_per_device = 128
+replay_capacity = 200000
+min_replay_to_train = 5000
+
+[train]
+batch_size_per_device = 32
+learning_rate = 0.0002
+warmup_steps = 1000
+total_steps = 200000
+value_loss_weight = 1.0
+weight_decay = 0.0001
+grad_clip_norm = 1.0
