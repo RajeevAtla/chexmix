@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-
 RUNS_DIR: Final[Path] = Path("runs")
 CONFIG_DIR: Final[Path] = Path("config")
 
@@ -25,7 +24,7 @@ class RunPaths:
     config_toml: Path
 
     @staticmethod
-    def create(run_id: str) -> "RunPaths":
+    def create(run_id: str) -> RunPaths:
         """Create run directories under /runs/<run_id>."""
         root = RUNS_DIR / run_id
         checkpoints = root / "checkpoints"

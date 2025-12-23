@@ -30,7 +30,13 @@ def test_compute_losses_masking_and_values() -> None:
     expected_l2 = jnp.array(0.2)
     expected_total = expected_policy + 2.0 * expected_value + expected_l2
 
-    chex.assert_trees_all_close(losses.policy, expected_policy, rtol=1e-6, atol=1e-6)
-    chex.assert_trees_all_close(losses.value, expected_value, rtol=1e-6, atol=1e-6)
+    chex.assert_trees_all_close(
+        losses.policy, expected_policy, rtol=1e-6, atol=1e-6
+    )
+    chex.assert_trees_all_close(
+        losses.value, expected_value, rtol=1e-6, atol=1e-6
+    )
     chex.assert_trees_all_close(losses.l2, expected_l2, rtol=1e-6, atol=1e-6)
-    chex.assert_trees_all_close(losses.total, expected_total, rtol=1e-6, atol=1e-6)
+    chex.assert_trees_all_close(
+        losses.total, expected_total, rtol=1e-6, atol=1e-6
+    )

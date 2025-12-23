@@ -10,15 +10,16 @@ Design:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 import jax
 import jax.numpy as jnp
 import optax
 from flax import nnx
 
-from chess_ai.types import Array, PRNGKey, Step
 from chess_ai.train.losses import LossConfig, Losses, compute_losses
 from chess_ai.train.state import TrainState
+from chess_ai.types import Array, Step
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,19 +29,12 @@ class TrainConfig:
     batch_size_per_device: int
 
 
-def _apply_model(model: nnx.Module, params: nnx.State, obs: Array) -> tuple[Array, Array]:
+def _apply_model(
+    graphdef: nnx.GraphDef[nnx.Module], params: nnx.State, obs: Array
+) -> tuple[Array, Array]:
     """Apply an NNX model with its parameters."""
-    if hasattr(nnx, "apply"):
-        output = nnx.apply(model, params)(obs)
-        return output.policy_logits, output.value
-    if hasattr(nnx, "merge"):
-        try:
-            merged = nnx.merge(model, params)
-        except TypeError:
-            merged = nnx.merge(params, model)
-        output = merged(obs)
-        return output.policy_logits, output.value
-    output = model(obs)
+    merged = nnx.merge(graphdef, params)
+    output = merged(obs)
     return output.policy_logits, output.value
 
 
@@ -68,8 +62,10 @@ def train_step(
     - grads aggregated by lax.pmean(axis_name="data")
     """
 
+    graphdef, _ = nnx.split(model)
+
     def loss_fn(params: nnx.State) -> tuple[Array, Losses]:
-        policy_logits, value_pred = _apply_model(model, params, batch["obs"])
+        policy_logits, value_pred = _apply_model(graphdef, params, batch["obs"])
         losses = compute_losses(
             policy_logits=policy_logits,
             value_pred=value_pred,
@@ -86,7 +82,7 @@ def train_step(
     losses = jax.tree_util.tree_map(lambda x: jax.lax.pmean(x, "data"), losses)
 
     updates, opt_state = tx.update(grads, state.opt_state, state.params)
-    params = optax.apply_updates(state.params, updates)
+    params = cast(nnx.State, optax.apply_updates(state.params, updates))
 
     rng_key, next_rng = jax.random.split(state.rng_key)
     new_state = TrainState(

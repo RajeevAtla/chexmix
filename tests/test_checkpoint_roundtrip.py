@@ -8,7 +8,12 @@ import jax.numpy as jnp
 import pytest
 from flax import nnx
 
-from chess_ai.train.checkpointing import CheckpointConfig, make_checkpoint_manager, restore_latest, save_checkpoint
+from chess_ai.train.checkpointing import (
+    CheckpointConfig,
+    make_checkpoint_manager,
+    restore_latest,
+    save_checkpoint,
+)
 from chess_ai.train.optimizer import OptimConfig, make_optimizer
 from chess_ai.train.state import TrainState
 from chess_ai.types import Array, Step

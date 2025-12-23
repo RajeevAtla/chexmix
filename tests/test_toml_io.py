@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from chess_ai.toml_io import _validate_toml_dict, dump_toml, load_toml, save_toml
+from chess_ai.toml_io import (
+    _validate_toml_dict,
+    dump_toml,
+    load_toml,
+    save_toml,
+)
 
 
 def test_dump_toml_deterministic_order() -> None:
@@ -16,14 +21,7 @@ def test_dump_toml_deterministic_order() -> None:
             "y": [1, 2],
         },
     }
-    expected = (
-        "a = 2\n"
-        "b = 1\n"
-        "\n"
-        "[section]\n"
-        "y = [1, 2]\n"
-        "z = \"hi\"\n"
-    )
+    expected = 'a = 2\nb = 1\n\n[section]\ny = [1, 2]\nz = "hi"\n'
     assert dump_toml(data) == expected
 
 

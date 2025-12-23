@@ -20,7 +20,9 @@ class OptimConfig:
     weight_decay: float
 
 
-def make_optimizer(cfg: OptimConfig) -> tuple[optax.GradientTransformation, optax.Schedule]:
+def make_optimizer(
+    cfg: OptimConfig,
+) -> tuple[optax.GradientTransformation, optax.Schedule]:
     """Create (optimizer, schedule) tuple."""
     schedule = optax.warmup_cosine_decay_schedule(
         init_value=0.0,

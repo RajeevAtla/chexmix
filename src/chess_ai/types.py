@@ -10,12 +10,12 @@ Hard requirements:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import NewType, TypeAlias
+from typing import NewType
 
 import jax
 
-Array: TypeAlias = jax.Array
-PRNGKey: TypeAlias = jax.Array  # shape (2,), dtype uint32
+type Array = jax.Array
+type PRNGKey = jax.Array  # shape (2,), dtype uint32
 
 Step = NewType("Step", int)
 GameId = NewType("GameId", int)

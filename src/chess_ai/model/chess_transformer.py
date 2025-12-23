@@ -17,12 +17,11 @@ Outputs:
 
 from __future__ import annotations
 
-import jax
 import jax.numpy as jnp
 from flax import nnx
 
-from chess_ai.types import Array, PolicyValue
 from chess_ai.model.nnx_blocks import TransformerBlock, TransformerConfig
+from chess_ai.types import Array, PolicyValue
 
 
 class ChessTransformer(nnx.Module):
@@ -35,9 +34,9 @@ class ChessTransformer(nnx.Module):
         self.pos_embed = nnx.Param(
             jnp.zeros((64, cfg.d_model), dtype=jnp.float32)
         )
-        self.blocks = [
-            TransformerBlock(cfg, rngs=rngs) for _ in range(cfg.n_layers)
-        ]
+        self.blocks = nnx.List(
+            [TransformerBlock(cfg, rngs=rngs) for _ in range(cfg.n_layers)]
+        )
         self.policy_head = nnx.Linear(cfg.d_model, 73, rngs=rngs)
         self.value_head = nnx.Linear(cfg.d_model, 1, rngs=rngs)
 
@@ -55,7 +54,7 @@ class ChessTransformer(nnx.Module):
         batch = obs.shape[0]
         tokens = obs.reshape(batch, 64, 119)
         x = self.token_embed(tokens)
-        x = x + self.pos_embed
+        x = x + self.pos_embed.value
         for block in self.blocks:
             x = block(x)
         policy_logits = self.policy_head(x)

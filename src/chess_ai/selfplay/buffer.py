@@ -10,6 +10,7 @@ Design constraint:
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 import jax
 import jax.numpy as jnp
 
@@ -40,8 +41,10 @@ class ReplayBuffer:
 
     def add(self, traj: Trajectory) -> None:
         """Insert a batch of trajectories into the buffer."""
-        obs_flat = jnp.reshape(traj.obs, (-1,) + traj.obs.shape[2:])
-        policy_flat = jnp.reshape(traj.policy_targets, (-1, traj.policy_targets.shape[-1]))
+        obs_flat = jnp.reshape(traj.obs, (-1, *traj.obs.shape[2:]))
+        policy_flat = jnp.reshape(
+            traj.policy_targets, (-1, traj.policy_targets.shape[-1])
+        )
         outcome_flat = jnp.reshape(traj.outcome, (-1,))
         valid_flat = jnp.reshape(traj.valid, (-1,))
 
@@ -62,8 +65,12 @@ class ReplayBuffer:
             self._size = self._capacity
 
         if self._obs is None:
-            self._obs = jnp.zeros((self._capacity,) + obs_np.shape[1:], dtype=obs_np.dtype)
-            self._policy = jnp.zeros((self._capacity,) + policy_np.shape[1:], dtype=policy_np.dtype)
+            self._obs = jnp.zeros(
+                (self._capacity, *obs_np.shape[1:]), dtype=obs_np.dtype
+            )
+            self._policy = jnp.zeros(
+                (self._capacity, *policy_np.shape[1:]), dtype=policy_np.dtype
+            )
             self._outcome = jnp.zeros((self._capacity,), dtype=outcome_np.dtype)
 
         self._insert(obs_np, policy_np, outcome_np, count)
@@ -74,7 +81,9 @@ class ReplayBuffer:
         """Return True if buffer has enough data to sample."""
         return self._size >= self._min_to_sample
 
-    def sample_batch(self, rng_key: PRNGKey, batch_size: int) -> dict[str, Array]:
+    def sample_batch(
+        self, rng_key: PRNGKey, batch_size: int
+    ) -> dict[str, Array]:
         """Sample a training batch.
 
         Returns:
@@ -118,13 +127,15 @@ class ReplayBuffer:
         first = min(self._capacity - self._write_idx, count)
         second = count - first
 
-        self._obs = self._obs.at[self._write_idx : self._write_idx + first].set(obs_np[:first])
-        self._policy = self._policy.at[self._write_idx : self._write_idx + first].set(
-            policy_np[:first]
+        self._obs = self._obs.at[self._write_idx : self._write_idx + first].set(
+            obs_np[:first]
         )
-        self._outcome = self._outcome.at[self._write_idx : self._write_idx + first].set(
-            outcome_np[:first]
-        )
+        self._policy = self._policy.at[
+            self._write_idx : self._write_idx + first
+        ].set(policy_np[:first])
+        self._outcome = self._outcome.at[
+            self._write_idx : self._write_idx + first
+        ].set(outcome_np[:first])
 
         if second > 0:
             self._obs = self._obs.at[:second].set(obs_np[first:])

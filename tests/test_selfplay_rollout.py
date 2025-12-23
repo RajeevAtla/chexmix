@@ -9,7 +9,10 @@ from flax import nnx
 
 from chess_ai.mcts.planner import MctsConfig, MctsOutput
 from chess_ai.selfplay.buffer import ReplayBuffer, ReplayConfig
-from chess_ai.selfplay.rollout import SelfPlayConfig, generate_selfplay_trajectories
+from chess_ai.selfplay.rollout import (
+    SelfPlayConfig,
+    generate_selfplay_trajectories,
+)
 from chess_ai.selfplay.trajectory import Trajectory
 from chess_ai.types import Array, PolicyValue
 
@@ -81,7 +84,11 @@ def test_selfplay_rollout_determinism(monkeypatch: pytest.MonkeyPatch) -> None:
         mcts_cfg=mcts_cfg,
     )
 
-    chex.assert_trees_all_equal(traj1, traj2)
+    chex.assert_trees_all_equal(traj1.obs, traj2.obs)
+    chex.assert_trees_all_equal(traj1.policy_targets, traj2.policy_targets)
+    chex.assert_trees_all_equal(traj1.player_id, traj2.player_id)
+    chex.assert_trees_all_equal(traj1.valid, traj2.valid)
+    chex.assert_trees_all_equal(traj1.outcome, traj2.outcome)
     assert traj1.obs.shape == (2, 4, 8, 8, 119)
     assert traj1.policy_targets.shape == (2, 4, 4672)
     assert traj1.player_id.shape == (2, 4)

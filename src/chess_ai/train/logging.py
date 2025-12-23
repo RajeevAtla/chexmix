@@ -7,7 +7,6 @@ All metrics artifacts must be TOML and stored in /runs/<run_id>/metrics/.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from chess_ai.paths import RunPaths
 from chess_ai.toml_io import TomlValue, save_toml

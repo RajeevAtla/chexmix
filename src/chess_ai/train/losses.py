@@ -48,7 +48,8 @@ def compute_losses(
         policy_targets: (B, 4672)
         outcome: (B,)
         valid: (B,) boolean/float mask
-        params_l2: scalar L2 norm term (already computed with correct param masking)
+        params_l2: scalar L2 norm term (already computed with correct
+            param masking)
         cfg: LossConfig
 
     Returns:

@@ -40,7 +40,7 @@ class RMSNorm(nnx.Module):
         """Apply RMSNorm."""
         mean_sq = jnp.mean(jnp.square(x), axis=-1, keepdims=True)
         rms = jnp.sqrt(mean_sq + self._eps)
-        return x / rms * self.scale
+        return x / rms * self.scale.value
 
 
 class MultiHeadSelfAttention(nnx.Module):
@@ -97,9 +97,7 @@ class TransformerBlock(nnx.Module):
 
     def __init__(self, cfg: TransformerConfig, *, rngs: nnx.Rngs) -> None:
         self.norm1 = RMSNorm(cfg.d_model, rngs=rngs)
-        self.attn = MultiHeadSelfAttention(
-            cfg.d_model, cfg.n_heads, rngs=rngs
-        )
+        self.attn = MultiHeadSelfAttention(cfg.d_model, cfg.n_heads, rngs=rngs)
         self.norm2 = RMSNorm(cfg.d_model, rngs=rngs)
         self.mlp = MlpBlock(cfg.d_model, cfg.mlp_ratio, rngs=rngs)
 

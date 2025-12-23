@@ -10,13 +10,12 @@ Constraints:
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TypeAlias
-
 import tomllib
+from pathlib import Path
+from typing import TypeGuard, cast
 
-TomlScalar: TypeAlias = str | int | float | bool
-TomlValue: TypeAlias = TomlScalar | list["TomlValue"] | dict[str, "TomlValue"]
+type TomlScalar = str | int | float | bool
+type TomlValue = TomlScalar | list["TomlValue"] | dict[str, "TomlValue"]
 
 
 def load_toml(path: Path) -> dict[str, TomlValue]:
@@ -33,6 +32,8 @@ def load_toml(path: Path) -> dict[str, TomlValue]:
         ValueError: If parsed content contains unsupported types.
     """
     data = tomllib.loads(path.read_text(encoding="utf-8"))
+    if not _is_str_key_dict(data):
+        raise ValueError("TOML root must be a table with string keys.")
     return _validate_toml_dict(data)
 
 
@@ -56,12 +57,18 @@ def save_toml(path: Path, data: dict[str, TomlValue]) -> None:
     path.write_text(dump_toml(data), encoding="utf-8")
 
 
+def _is_str_key_dict(value: object) -> TypeGuard[dict[str, object]]:
+    if not isinstance(value, dict):
+        return False
+    return all(isinstance(key, str) for key in value)
+
+
 def _validate_toml_dict(raw: dict[str, object]) -> dict[str, TomlValue]:
     """Validate TOML data without leaking `object` to callers."""
     validated: dict[str, TomlValue] = {}
     for key, value in raw.items():
-        if isinstance(value, dict):
-            nested = _validate_toml_dict(value)
+        if _is_str_key_dict(value):
+            nested = _validate_toml_dict(cast(dict[str, object], value))
             validated[key] = nested
             continue
 
@@ -121,8 +128,8 @@ def _format_value(value: TomlValue) -> str:
         return repr(value)
 
     if isinstance(value, str):
-        escaped = value.replace("\\", "\\\\").replace('"', "\\\"")
-        return f"\"{escaped}\""
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
 
     if isinstance(value, list):
         rendered = ", ".join(_format_value(item) for item in value)

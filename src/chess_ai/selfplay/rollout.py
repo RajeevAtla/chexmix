@@ -43,12 +43,12 @@ def _tree_where(mask: Array, new: pgx.State, old: pgx.State) -> pgx.State:
 
 def _safe_policy_targets(action_weights: Array, valid: Array) -> Array:
     """Mask policy targets for invalid timesteps."""
-    return jnp.where(valid[:, None], action_weights, jnp.zeros_like(action_weights))
+    return jnp.where(
+        valid[:, None], action_weights, jnp.zeros_like(action_weights)
+    )
 
 
-def _zero_outcome(
-    outcome: Array, valid: Array, dtype: jnp.dtype
-) -> Array:
+def _zero_outcome(outcome: Array, valid: Array, dtype: jnp.dtype) -> Array:
     """Zero invalid outcomes."""
     return jnp.where(valid, outcome, jnp.zeros_like(outcome, dtype=dtype))
 

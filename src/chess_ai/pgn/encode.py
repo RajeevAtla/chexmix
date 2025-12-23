@@ -8,17 +8,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from chess_ai.types import Array
-
 _QUEEN_DIRS = (
-    (0, 1),   # N
+    (0, 1),  # N
     (0, -1),  # S
-    (1, 0),   # E
+    (1, 0),  # E
     (-1, 0),  # W
-    (1, 1),   # NE
+    (1, 1),  # NE
     (-1, 1),  # NW
     (1, -1),  # SE
-    (-1, -1), # SW
+    (-1, -1),  # SW
 )
 
 _KNIGHT_DIRS = (
@@ -34,9 +32,9 @@ _KNIGHT_DIRS = (
 
 _PROMO_PIECES = ("r", "b", "n")
 _PROMO_DIRS = (
-    (0, 1),   # forward
+    (0, 1),  # forward
     (-1, 1),  # forward-left
-    (1, 1),   # forward-right
+    (1, 1),  # forward-right
 )
 
 
