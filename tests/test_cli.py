@@ -2,10 +2,114 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import jax
+import jax.numpy as jnp
 import pytest
 
-from cli import build_parser, main
-from toml_io import save_toml
+from cli import (
+    _append_event,
+    _combine_traj,
+    _eval,
+    _get_float,
+    _get_int,
+    _get_str,
+    _get_table,
+    _get_table_optional,
+    _git_sha,
+    _parse_env_config,
+    _parse_run_config,
+    _run_id,
+    _split_batch,
+    _train,
+    _write_bootstrap_artifacts,
+    _write_pgn_snapshot,
+    _write_start_event,
+    _write_stop_event,
+    build_parser,
+    main,
+)
+from paths import RunPaths
+from selfplay.rollout import SelfPlayConfig
+from selfplay.trajectory import Trajectory
+from toml_io import TomlValue, load_toml, save_toml
+from train.losses import Losses
+from train.state import TrainState
+
+
+def _minimal_train_config() -> dict[str, TomlValue]:
+    return {
+        "run": {
+            "name": "demo",
+            "seed": 42,
+            "devices": 1,
+            "log_every_steps": 1,
+            "checkpoint_every_steps": 1,
+            "pgn_every_games": 1,
+            "max_runtime_minutes": 1,
+        },
+        "env": {"max_moves": 4},
+        "model": {"d_model": 8, "n_heads": 2, "mlp_ratio": 1, "n_layers": 1},
+        "mcts": {
+            "num_simulations": 1,
+            "max_depth": 1,
+            "c_puct": 1.0,
+            "gumbel_scale": 1.0,
+        },
+        "selfplay": {
+            "games_per_device": 1,
+            "replay_capacity": 8,
+            "min_replay_to_train": 2,
+        },
+        "train": {
+            "batch_size_per_device": 1,
+            "learning_rate": 0.001,
+            "warmup_steps": 0,
+            "total_steps": 1,
+            "value_loss_weight": 1.0,
+            "weight_decay": 0.0,
+            "grad_clip_norm": 1.0,
+        },
+    }
+
+
+def _fake_selfplay(
+    *,
+    env: object,
+    model: object,
+    params: object,
+    rng_key: jax.Array,
+    selfplay_cfg: SelfPlayConfig,
+    mcts_cfg: object,
+) -> Trajectory:
+    del env, model, params, rng_key, mcts_cfg
+    cfg = selfplay_cfg
+    batch = cfg.games_per_device
+    max_moves = cfg.max_moves
+    obs = jnp.zeros((batch, max_moves, 8, 8, 119), dtype=jnp.float32)
+    policy = jnp.full((batch, max_moves, 4672), 1.0 / 4672.0, dtype=jnp.float32)
+    player_id = jnp.zeros((batch, max_moves), dtype=jnp.int32)
+    valid = jnp.ones((batch, max_moves), dtype=jnp.bool_)
+    outcome = jnp.zeros((batch, max_moves), dtype=jnp.float32)
+    return Trajectory(
+        obs=obs,
+        policy_targets=policy,
+        player_id=player_id,
+        valid=valid,
+        outcome=outcome,
+    )
+
+
+def _fake_train_step(
+    *,
+    model: object,
+    tx: object,
+    state: TrainState,
+    batch: dict[str, jax.Array],
+    loss_cfg: object,
+) -> tuple[TrainState, Losses]:
+    del model, tx, batch, loss_cfg
+    zero = jnp.array(0.0, dtype=jnp.float32)
+    return state, Losses(total=zero, policy=zero, value=zero, l2=zero)
 
 
 def test_build_parser_train_args() -> None:
@@ -29,8 +133,12 @@ def test_main_train_writes_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("cli.generate_selfplay_trajectories", _fake_selfplay)
+    monkeypatch.setattr("cli.train_step", _fake_train_step)
+    monkeypatch.setattr("cli.make_checkpoint_manager", lambda *_: object())
+    monkeypatch.setattr("cli.save_checkpoint", lambda *_: None)
     config_path = tmp_path / "config.toml"
-    save_toml(config_path, {"run": {"name": "demo"}})
+    save_toml(config_path, _minimal_train_config())
 
     assert main(["train", "--config", str(config_path)]) == 0
 
@@ -62,3 +170,182 @@ def test_main_missing_run_name(
     save_toml(config_path, {"run": {"seed": 42}})
     with pytest.raises(ValueError, match="Missing string key"):
         _ = main(["eval", "--config", str(config_path)])
+
+
+def test_get_helpers_and_parsers() -> None:
+    table: dict[str, TomlValue] = {"count": 3, "name": "demo"}
+    assert _get_int(table, "count") == 3
+    assert _get_str(table, "name") == "demo"
+    assert _get_float({"pi": 3.0}, "pi") == 3.0
+    assert _get_float({"pi": 3}, "pi") == 3.0
+
+    with pytest.raises(ValueError, match="Missing int key"):
+        _ = _get_int(table, "missing")
+    with pytest.raises(ValueError, match="Missing string key"):
+        _ = _get_str(table, "missing")
+    with pytest.raises(ValueError, match="Missing float key"):
+        _ = _get_float(table, "missing")
+    with pytest.raises(ValueError, match="Missing TOML table"):
+        _ = _get_table({"run": {"name": "x", "seed": 1}}, "missing")
+    assert (
+        _get_table_optional({"run": {"name": "x", "seed": 1}}, "missing")
+        is None
+    )
+    with pytest.raises(ValueError, match="Missing TOML table"):
+        _ = _get_table_optional({"bad": 1}, "bad")
+
+
+def test_append_event_and_git_sha(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    paths = RunPaths.create("run")
+    save_toml(
+        paths.events_toml, {"event_bad": {"event": "x"}, "event_0002": {}}
+    )
+    _append_event(paths, {"event": "start"})
+    data = load_toml(paths.events_toml)
+    assert "event_0003" in data
+
+    assert _git_sha() == "unknown"
+    git_dir = tmp_path / ".git" / "refs" / "heads"
+    git_dir.mkdir(parents=True)
+    (tmp_path / ".git" / "HEAD").write_text(
+        "ref: refs/heads/main", encoding="utf-8"
+    )
+    assert _git_sha() == "unknown"
+    (git_dir / "main").write_text("deadbeef", encoding="utf-8")
+    assert _git_sha() == "deadbeef"
+    (tmp_path / ".git" / "HEAD").write_text("cafebabe", encoding="utf-8")
+    assert _git_sha() == "cafebabe"
+
+
+def test_events_and_pgn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    paths = RunPaths.create("run")
+    run_id = _run_id("demo")
+    _write_start_event(paths, run_id, "demo")
+    _write_stop_event(paths, run_id, "demo", "done")
+    _write_bootstrap_artifacts(paths, "demo")
+    _write_pgn_snapshot(paths, "demo", 2)
+    assert paths.events_toml.exists()
+    assert (paths.games_dir / "game_0000000001.pgn").exists()
+    assert (paths.games_dir / "game_0000000002.pgn").exists()
+
+
+def test_split_batch_and_combine_traj() -> None:
+    batch = {
+        "obs": jnp.zeros((4, 8, 8, 119), dtype=jnp.float32),
+        "policy_targets": jnp.zeros((4, 4672), dtype=jnp.float32),
+    }
+    split = _split_batch(batch, device_count=2)
+    assert split["obs"].shape[0] == 2
+    traj = Trajectory(
+        obs=jnp.zeros((2, 3, 8, 8, 119), dtype=jnp.float32),
+        policy_targets=jnp.zeros((2, 3, 4672), dtype=jnp.float32),
+        player_id=jnp.zeros((2, 3), dtype=jnp.int32),
+        valid=jnp.ones((2, 3), dtype=jnp.bool_),
+        outcome=jnp.zeros((2, 3), dtype=jnp.float32),
+    )
+    merged = _combine_traj(traj)
+    assert merged.obs.shape[0] == 6
+
+
+def test_train_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("cli.generate_selfplay_trajectories", _fake_selfplay)
+    monkeypatch.setattr("cli.train_step", _fake_train_step)
+    monkeypatch.setattr("cli.make_checkpoint_manager", lambda *_: object())
+    monkeypatch.setattr("cli.save_checkpoint", lambda *_: None)
+    config = _minimal_train_config()
+    paths = RunPaths.create("run")
+    _train(config, paths, "run")
+    assert paths.events_toml.exists()
+    assert paths.metrics_dir.exists()
+    assert paths.games_dir.exists()
+
+
+def test_train_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("cli.generate_selfplay_trajectories", _fake_selfplay)
+    monkeypatch.setattr("cli.train_step", _fake_train_step)
+    monkeypatch.setattr("cli.make_checkpoint_manager", lambda *_: object())
+    monkeypatch.setattr("cli.save_checkpoint", lambda *_: None)
+    config = _minimal_train_config()
+    run_table = _get_table(config, "run")
+    run_table["max_runtime_minutes"] = 0
+    paths = RunPaths.create("run")
+    _train(config, paths, "run")
+    data = load_toml(paths.events_toml)
+    event = data["event_0001"]
+    assert isinstance(event, dict)
+    assert event.get("reason") == "time"
+
+
+def test_train_no_devices(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("cli.jax.local_device_count", lambda: 0)
+    with pytest.raises(ValueError, match="No JAX devices available"):
+        _train(_minimal_train_config(), RunPaths.create("run"), "run")
+
+
+def test_eval_writes_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = _minimal_train_config()
+    config["run"] = {
+        "name": "eval",
+        "seed": 1,
+        "devices": 1,
+        "log_every_steps": 1,
+        "checkpoint_every_steps": 1,
+        "pgn_every_games": 1,
+        "max_runtime_minutes": 1,
+    }
+    paths = RunPaths.create("eval_run")
+    _eval(config, paths, "eval_run")
+    assert (paths.root / "eval_results.toml").exists()
+
+
+def test_eval_with_checkpoints_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = _minimal_train_config()
+    config["eval"] = {"checkpoints_dir": "runs/demo/checkpoints"}
+    config["run"] = {
+        "name": "eval",
+        "seed": 1,
+        "devices": 1,
+        "log_every_steps": 1,
+        "checkpoint_every_steps": 1,
+        "pgn_every_games": 1,
+        "max_runtime_minutes": 1,
+    }
+    paths = RunPaths.create("eval_run")
+    _eval(config, paths, "eval_run")
+    assert (paths.root / "eval_results.toml").exists()
+
+
+def test_parse_env_and_run_config() -> None:
+    config = {
+        "run": {
+            "name": "demo",
+            "seed": 1,
+            "devices": 1,
+            "log_every_steps": 1,
+            "checkpoint_every_steps": 1,
+            "pgn_every_games": 1,
+            "max_runtime_minutes": 1,
+        },
+        "env": {"max_moves": 2},
+    }
+    run_cfg = _parse_run_config(config)
+    env_cfg = _parse_env_config(config)
+    assert run_cfg.name == "demo"
+    assert env_cfg.max_moves == 2

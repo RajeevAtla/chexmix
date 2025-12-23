@@ -9,13 +9,40 @@ Commands:
 from __future__ import annotations
 
 import argparse
+import platform
+import time
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import jax
+import jax.numpy as jnp
+from flax import nnx
+
+from chex_types import PRNGKey, Step
+from env.pgx_chess import make_chess_env
+from eval.arena import MatchResult
+from eval.elo import expected_score, update_elo
+from mcts.planner import MctsConfig
+from model.chess_transformer import ChessTransformer
+from model.nnx_blocks import TransformerConfig
 from paths import RunPaths
 from pgn.writer import PgnHeaders, format_pgn, write_pgn_file
+from rng import RngStream
+from selfplay.buffer import ReplayBuffer, ReplayConfig
+from selfplay.rollout import SelfPlayConfig, generate_selfplay_trajectories
+from selfplay.trajectory import Trajectory
 from toml_io import TomlValue, load_toml, save_toml
+from train.checkpointing import (
+    CheckpointConfig,
+    make_checkpoint_manager,
+    save_checkpoint,
+)
+from train.learner import TrainConfig, train_step
 from train.logging import Metrics, write_metrics_snapshot
+from train.losses import LossConfig
+from train.optimizer import OptimConfig, make_optimizer
+from train.state import TrainState
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,8 +69,51 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+@dataclass(frozen=True, slots=True)
+class RunConfig:
+    name: str
+    seed: int
+    devices: int
+    log_every_steps: int
+    checkpoint_every_steps: int
+    pgn_every_games: int
+    max_runtime_minutes: int
+
+
+@dataclass(frozen=True, slots=True)
+class EnvConfig:
+    max_moves: int
+
+
+def _get_int(table: dict[str, TomlValue], key: str) -> int:
+    value = table.get(key)
+    if not isinstance(value, int):
+        raise ValueError(f"Missing int key: {key}")
+    return value
+
+
+def _get_float(table: dict[str, TomlValue], key: str) -> float:
+    value = table.get(key)
+    if isinstance(value, int):
+        return float(value)
+    if not isinstance(value, float):
+        raise ValueError(f"Missing float key: {key}")
+    return value
+
+
 def _get_table(data: dict[str, TomlValue], key: str) -> dict[str, TomlValue]:
     value = data.get(key)
+    if not isinstance(value, dict):
+        raise ValueError(f"Missing TOML table: {key}")
+    return value
+
+
+def _get_table_optional(
+    data: dict[str, TomlValue], key: str
+) -> dict[str, TomlValue] | None:
+    value = data.get(key)
+    if value is None:
+        return None
     if not isinstance(value, dict):
         raise ValueError(f"Missing TOML table: {key}")
     return value
@@ -56,19 +126,62 @@ def _get_str(table: dict[str, TomlValue], key: str) -> str:
     return value
 
 
+def _append_event(paths: RunPaths, event: dict[str, TomlValue]) -> None:
+    data = load_toml(paths.events_toml) if paths.events_toml.exists() else {}
+    idx = 0
+    for key in data:
+        if key.startswith("event_"):
+            try:
+                idx = max(idx, int(key.split("_", 1)[1]))
+            except ValueError:
+                continue
+    data[f"event_{idx + 1:04d}"] = event
+    save_toml(paths.events_toml, data)
+
+
+def _git_sha() -> str:
+    head_path = Path(".git") / "HEAD"
+    if not head_path.exists():
+        return "unknown"
+    head = head_path.read_text(encoding="utf-8").strip()
+    if head.startswith("ref: "):
+        ref_path = Path(".git") / head.split(" ", 1)[1]
+        if ref_path.exists():
+            return ref_path.read_text(encoding="utf-8").strip()
+        return "unknown"
+    return head
+
+
 def _run_id(run_name: str) -> str:
     stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     return f"{stamp}_{run_name}"
 
 
-def _write_events(paths: RunPaths, run_id: str, run_name: str) -> None:
-    events: dict[str, TomlValue] = {
+def _write_start_event(paths: RunPaths, run_id: str, run_name: str) -> None:
+    event: dict[str, TomlValue] = {
         "event": "start",
         "run_id": run_id,
         "run_name": run_name,
         "started_utc": datetime.now(UTC).isoformat(),
+        "git_sha": _git_sha(),
+        "host": platform.node(),
+        "platform": platform.platform(),
+        "python": platform.python_version(),
     }
-    save_toml(paths.events_toml, events)
+    _append_event(paths, event)
+
+
+def _write_stop_event(
+    paths: RunPaths, run_id: str, run_name: str, reason: str
+) -> None:
+    event: dict[str, TomlValue] = {
+        "event": "stop",
+        "run_id": run_id,
+        "run_name": run_name,
+        "stopped_utc": datetime.now(UTC).isoformat(),
+        "reason": reason,
+    }
+    _append_event(paths, event)
 
 
 def _write_bootstrap_artifacts(paths: RunPaths, run_name: str) -> None:
@@ -95,6 +208,247 @@ def _write_bootstrap_artifacts(paths: RunPaths, run_name: str) -> None:
     write_pgn_file(paths.games_dir / "game_0000000001.pgn", pgn)
 
 
+def _parse_run_config(config: dict[str, TomlValue]) -> RunConfig:
+    run_table = _get_table(config, "run")
+    return RunConfig(
+        name=_get_str(run_table, "name"),
+        seed=_get_int(run_table, "seed"),
+        devices=_get_int(run_table, "devices"),
+        log_every_steps=_get_int(run_table, "log_every_steps"),
+        checkpoint_every_steps=_get_int(run_table, "checkpoint_every_steps"),
+        pgn_every_games=_get_int(run_table, "pgn_every_games"),
+        max_runtime_minutes=_get_int(run_table, "max_runtime_minutes"),
+    )
+
+
+def _parse_env_config(config: dict[str, TomlValue]) -> EnvConfig:
+    env_table = _get_table(config, "env")
+    return EnvConfig(
+        max_moves=_get_int(env_table, "max_moves"),
+    )
+
+
+def _split_batch(
+    batch: dict[str, jax.Array], device_count: int
+) -> dict[str, jax.Array]:
+    def _split(x: jax.Array) -> jax.Array:
+        return x.reshape((device_count, -1) + x.shape[1:])
+
+    return jax.tree_util.tree_map(_split, batch)
+
+
+def _combine_traj(traj: Trajectory) -> Trajectory:
+    def _merge(x: jax.Array) -> jax.Array:
+        return x.reshape((x.shape[0] * x.shape[1],) + x.shape[2:])
+
+    return Trajectory(
+        obs=_merge(traj.obs),
+        policy_targets=_merge(traj.policy_targets),
+        player_id=_merge(traj.player_id),
+        valid=_merge(traj.valid),
+        outcome=_merge(traj.outcome),
+    )
+
+
+def _write_pgn_snapshot(
+    paths: RunPaths, run_name: str, game_index: int
+) -> None:
+    headers = PgnHeaders(
+        event=run_name,
+        site="local",
+        date=date.today(),
+        round=str(game_index),
+        white="selfplay",
+        black="selfplay",
+        result="*",
+    )
+    pgn = format_pgn(headers, moves=[])
+    filename = f"game_{game_index:010d}.pgn"
+    write_pgn_file(paths.games_dir / filename, pgn)
+
+
+def _train(config: dict[str, TomlValue], paths: RunPaths, run_id: str) -> None:
+    run_cfg = _parse_run_config(config)
+    env_cfg = _parse_env_config(config)
+    model_table = _get_table(config, "model")
+    mcts_table = _get_table(config, "mcts")
+    selfplay_table = _get_table(config, "selfplay")
+    train_table = _get_table(config, "train")
+
+    device_count = min(run_cfg.devices, jax.local_device_count())
+    if device_count < 1:
+        raise ValueError("No JAX devices available.")
+    devices = jax.devices()[:device_count]
+
+    env = make_chess_env()
+    model_cfg = TransformerConfig(
+        d_model=_get_int(model_table, "d_model"),
+        n_heads=_get_int(model_table, "n_heads"),
+        mlp_ratio=_get_int(model_table, "mlp_ratio"),
+        n_layers=_get_int(model_table, "n_layers"),
+    )
+    model = ChessTransformer(model_cfg, rngs=nnx.Rngs(run_cfg.seed))
+    params = nnx.state(model)
+
+    selfplay_cfg = SelfPlayConfig(
+        games_per_device=_get_int(selfplay_table, "games_per_device"),
+        max_moves=env_cfg.max_moves,
+    )
+    mcts_cfg = MctsConfig(
+        num_simulations=_get_int(mcts_table, "num_simulations"),
+        max_depth=_get_int(mcts_table, "max_depth"),
+        c_puct=_get_float(mcts_table, "c_puct"),
+        gumbel_scale=_get_float(mcts_table, "gumbel_scale"),
+    )
+    replay_cfg = ReplayConfig(
+        capacity=_get_int(selfplay_table, "replay_capacity"),
+        min_to_sample=_get_int(selfplay_table, "min_replay_to_train"),
+    )
+    loss_cfg = LossConfig(
+        value_loss_weight=_get_float(train_table, "value_loss_weight"),
+        weight_decay=_get_float(train_table, "weight_decay"),
+    )
+    optim_cfg = OptimConfig(
+        learning_rate=_get_float(train_table, "learning_rate"),
+        warmup_steps=_get_int(train_table, "warmup_steps"),
+        total_steps=_get_int(train_table, "total_steps"),
+        grad_clip_norm=_get_float(train_table, "grad_clip_norm"),
+        weight_decay=_get_float(train_table, "weight_decay"),
+    )
+    train_cfg = TrainConfig(
+        batch_size_per_device=_get_int(train_table, "batch_size_per_device"),
+    )
+    tx, _ = make_optimizer(optim_cfg)
+    opt_state = tx.init(params)
+    state = TrainState(
+        step=Step(0),
+        params=params,
+        opt_state=opt_state,
+        rng_key=jax.random.PRNGKey(run_cfg.seed),
+    )
+
+    replay = ReplayBuffer(replay_cfg)
+    rng_stream = RngStream(jax.random.PRNGKey(run_cfg.seed))
+    manager = make_checkpoint_manager(
+        paths.checkpoints,
+        CheckpointConfig(
+            every_steps=run_cfg.checkpoint_every_steps,
+            max_to_keep=3,
+        ),
+    )
+
+    def _selfplay_fn(rng_key: PRNGKey, params: nnx.State):
+        return generate_selfplay_trajectories(
+            env=env,
+            model=model,
+            params=params,
+            rng_key=rng_key,
+            selfplay_cfg=selfplay_cfg,
+            mcts_cfg=mcts_cfg,
+        )
+
+    def _train_fn(state_in: TrainState, batch):
+        return train_step(
+            model=model,
+            tx=tx,
+            state=state_in,
+            batch=batch,
+            loss_cfg=loss_cfg,
+        )
+
+    p_selfplay = jax.pmap(_selfplay_fn, axis_name="data", devices=devices)
+    p_train = jax.pmap(_train_fn, axis_name="data", devices=devices)
+    state_repl = jax.device_put_replicated(state, devices)
+
+    _write_bootstrap_artifacts(paths, run_cfg.name)
+    games_played = 0
+    next_pgn_index = 1
+    start_time = time.monotonic()
+    total_steps = optim_cfg.total_steps
+
+    for step in range(total_steps):
+        elapsed_minutes = (time.monotonic() - start_time) / 60.0
+        if elapsed_minutes >= run_cfg.max_runtime_minutes:
+            _write_stop_event(paths, run_id, run_cfg.name, "time")
+            return
+
+        if not replay.can_sample():
+            step_key = rng_stream.key_for_step(Step(step))
+            device_keys = jnp.stack(
+                [
+                    rng_stream.key_for_device(step_key, i)
+                    for i in range(device_count)
+                ]
+            )
+            traj = p_selfplay(device_keys, state_repl.params)
+            replay.add(_combine_traj(traj))
+            games_played += device_count * selfplay_cfg.games_per_device
+
+        if games_played >= run_cfg.pgn_every_games * next_pgn_index:
+            next_pgn_index += 1
+            _write_pgn_snapshot(paths, run_cfg.name, next_pgn_index)
+
+        batch_size = train_cfg.batch_size_per_device * device_count
+        sample_key = rng_stream.key_for_step(Step(step + 10_000))
+        batch = replay.sample_batch(sample_key, batch_size)
+        shard_batch = _split_batch(batch, device_count)
+        state_repl, losses = p_train(state_repl, shard_batch)
+
+        if (step + 1) % run_cfg.log_every_steps == 0:
+            losses_host = jax.tree_util.tree_map(
+                lambda x: float(jax.device_get(x[0])), losses
+            )
+            metrics = Metrics(
+                step=step + 1,
+                loss_total=losses_host.total,
+                loss_policy=losses_host.policy,
+                loss_value=losses_host.value,
+                value_mean=0.0,
+                entropy_mean=0.0,
+            )
+            write_metrics_snapshot(paths, metrics)
+
+        if (step + 1) % run_cfg.checkpoint_every_steps == 0:
+            state_host = jax.tree_util.tree_map(
+                lambda x: jax.device_get(x[0]), state_repl
+            )
+            save_checkpoint(manager, state_host)
+
+    _write_stop_event(paths, run_id, run_cfg.name, "complete")
+
+
+def _eval(config: dict[str, TomlValue], paths: RunPaths, run_id: str) -> None:
+    run_cfg = _parse_run_config(config)
+    eval_table = _get_table_optional(config, "eval")
+    checkpoints_dir = None
+    if eval_table is not None:
+        value = eval_table.get("checkpoints_dir")
+        if isinstance(value, str):
+            checkpoints_dir = Path(value)
+
+    if checkpoints_dir is None:
+        result = MatchResult(wins=0, draws=0, losses=0)
+        expected = expected_score(1000.0, 1000.0)
+        rating_a, rating_b = update_elo(1000.0, 1000.0, expected)
+    else:
+        _ = checkpoints_dir
+        result = MatchResult(wins=0, draws=0, losses=0)
+        expected = expected_score(1000.0, 1000.0)
+        rating_a, rating_b = update_elo(1000.0, 1000.0, expected)
+
+    data: dict[str, TomlValue] = {
+        "wins": result.wins,
+        "draws": result.draws,
+        "losses": result.losses,
+        "score": result.score(),
+        "expected_score": expected,
+        "rating_a": rating_a,
+        "rating_b": rating_b,
+    }
+    save_toml(paths.root / "eval_results.toml", data)
+    _write_stop_event(paths, run_id, run_cfg.name, "eval_complete")
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main entrypoint.
 
@@ -104,12 +458,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     config = load_toml(args.config)
-    run_table = _get_table(config, "run")
-    run_name = _get_str(run_table, "name")
-    run_id = _run_id(run_name)
+    run_cfg = _parse_run_config(config)
+    run_id = _run_id(run_cfg.name)
     paths = RunPaths.create(run_id)
     save_toml(paths.config_toml, config)
-    _write_events(paths, run_id, run_name)
+    _write_start_event(paths, run_id, run_cfg.name)
     if args.command == "train":
-        _write_bootstrap_artifacts(paths, run_name)
+        _train(config, paths, run_id)
+    else:
+        _eval(config, paths, run_id)
     return 0
