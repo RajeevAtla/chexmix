@@ -22,4 +22,4 @@ jobs:
           save-cache: "true"
           cache-python: "true"
       - run: uv sync --group dev
-      - run: uv run python -m pytest
+      - run: PYTHONPATH=src uv run python -m pytest
