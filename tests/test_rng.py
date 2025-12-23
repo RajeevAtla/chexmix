@@ -1,0 +1,32 @@
+from __future__ import annotations
+
+import jax
+import jax.numpy as jnp
+
+from chess_ai.rng import RngStream
+from chess_ai.types import Step
+
+
+def test_rng_stream_determinism() -> None:
+    base_key = jax.random.PRNGKey(42)
+    stream = RngStream(base_key=base_key)
+
+    key_a1 = stream.key_for_step(Step(1))
+    key_a2 = stream.key_for_step(Step(1))
+    key_b = stream.key_for_step(Step(2))
+
+    assert jnp.array_equal(key_a1, key_a2)
+    assert not jnp.array_equal(key_a1, key_b)
+
+
+def test_rng_stream_device_key() -> None:
+    base_key = jax.random.PRNGKey(42)
+    stream = RngStream(base_key=base_key)
+    step_key = stream.key_for_step(Step(3))
+
+    key0 = stream.key_for_device(step_key, 0)
+    key0_again = stream.key_for_device(step_key, 0)
+    key1 = stream.key_for_device(step_key, 1)
+
+    assert jnp.array_equal(key0, key0_again)
+    assert not jnp.array_equal(key0, key1)
