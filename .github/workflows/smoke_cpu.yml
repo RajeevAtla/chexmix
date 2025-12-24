@@ -1,0 +1,27 @@
+name: smoke-cpu
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+
+jobs:
+  smoke-cpu-train:
+    runs-on: ubuntu-latest
+    env:
+      JAX_PLATFORM_NAME: cpu
+      FORCE_COLOR: "1"
+      GITHUB_ACTIONS: "true"
+      CLICOLOR_FORCE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          activate-environment: "true"
+          enable-cache: "true"
+          restore-cache: "true"
+          save-cache: "true"
+          cache-python: "true"
+      - run: uv sync --group dev
+      - run: uv run python -m . train --config config/smoke_cpu.toml

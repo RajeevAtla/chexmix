@@ -22,7 +22,7 @@ uv sync --group cuda --group dev
 ## Train
 
 ```bash
-PYTHONPATH=src uv run python -m cli train --config config/default.toml
+uv run python -m . train --config config/default.toml
 ```
 
 ## Tests
@@ -38,4 +38,3 @@ uv run ruff check .
 uv run ruff format .
 uv run ty check
 ```
-
