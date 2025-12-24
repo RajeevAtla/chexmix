@@ -20,6 +20,7 @@ from train.checkpointing import (
     _as_state_if_dict,
     _is_value_dict,
     _normalize_pytree,
+    _restore_args_from_metadata,
     _restore_opt_state,
     _tree_to_state,
     make_checkpoint_manager,
@@ -202,10 +203,15 @@ def test_restore_latest_invalid_mapping() -> None:
             """Return a fixed latest step."""
             return 0
 
-        def restore(self, step: int) -> int:
+        def restore(self, step: int, **_kwargs: object) -> int:
             """Return an invalid payload instead of a mapping."""
             del step
             return 123
+
+        def item_metadata(self, step: int) -> object:
+            """Return dummy metadata for restore args."""
+            del step
+            return None
 
     with pytest.raises(ValueError, match="not a mapping"):
         _ = restore_latest(cast(ocp.CheckpointManager, DummyManager()))
@@ -213,6 +219,39 @@ def test_restore_latest_invalid_mapping() -> None:
 
 def test_checkpoint_helpers_paths() -> None:
     """Helper utilities handle edge cases for pytrees and opt state."""
+
+    # Validate restore args generation from sharding metadata.
+    class FakeLeaf:
+        """Leaf container with sharding metadata."""
+
+        def __init__(self, sharding: object) -> None:
+            """Store sharding metadata on the leaf.
+
+            Args:
+                sharding: Sharding metadata object.
+            """
+            self.sharding = sharding
+
+    class FakeMeta:
+        """Metadata wrapper holding a tree attribute."""
+
+        def __init__(self, tree: object) -> None:
+            """Store tree metadata structure.
+
+            Args:
+                tree: Tree structure to wrap.
+            """
+            self.tree = tree
+
+    restore_args = cast(
+        dict[str, object],
+        _restore_args_from_metadata(
+            FakeMeta({"x": FakeLeaf(sharding=object()), "y": None})
+        ),
+    )
+    assert isinstance(restore_args["x"], ocp.ArrayRestoreArgs)
+    assert restore_args["y"] is None
+
     # Validate helper behavior for edge cases.
     assert not _is_value_dict(1)
     assert _normalize_pytree([1, 2]) == (1, 2)

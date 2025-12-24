@@ -9,12 +9,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeGuard, cast
+from typing import Protocol, TypeGuard, cast, runtime_checkable
 
 import jax
 import optax
 import orbax.checkpoint as ocp
 from flax import nnx
+from jax.sharding import Sharding
+from orbax.checkpoint import args as args_lib
+from orbax.checkpoint._src.metadata.sharding import ShardingMetadata
 
 from chex_types import PRNGKey, Step
 from train.state import TrainState
@@ -29,6 +32,14 @@ class CheckpointConfig:
 
 
 type CheckpointTree = dict[str, nnx.State | optax.OptState | PRNGKey | int]
+type ShardingLike = Sharding | ShardingMetadata
+
+
+@runtime_checkable
+class _HasSharding(Protocol):
+    """Protocol for metadata leaves that expose sharding information."""
+
+    sharding: ShardingLike | None
 
 
 def make_checkpoint_manager(
@@ -40,6 +51,28 @@ def make_checkpoint_manager(
         max_to_keep=cfg.max_to_keep, create=True
     )
     return ocp.CheckpointManager(checkpoints_dir, checkpointer, options)
+
+
+def _restore_args_from_metadata(metadata: object) -> object:
+    """Build a restore_args pytree from Orbax metadata.
+
+    Args:
+        metadata: TreeMetadata or a tree-like structure containing leaves
+            with optional sharding info.
+
+    Returns:
+        A pytree matching the metadata structure with ArrayRestoreArgs
+        where sharding metadata is available, otherwise None leaves.
+    """
+    # TreeMetadata stores the actual tree under a `.tree` attribute.
+    tree = getattr(metadata, "tree", metadata)
+
+    def _leaf_to_args(leaf: object) -> object:
+        if isinstance(leaf, _HasSharding) and leaf.sharding is not None:
+            return ocp.ArrayRestoreArgs(sharding=leaf.sharding)
+        return None
+
+    return jax.tree_util.tree_map(_leaf_to_args, tree)
 
 
 def _state_to_tree(state: TrainState) -> CheckpointTree:
@@ -215,7 +248,12 @@ def restore_latest(
     step = manager.latest_step()
     if step is None:
         raise FileNotFoundError("No checkpoint found.")
-    restored = manager.restore(step)
+    # Use metadata-backed restore args to provide explicit sharding info.
+    metadata = manager.item_metadata(step)
+    restore_args = _restore_args_from_metadata(metadata)
+    restored = manager.restore(
+        step, args=args_lib.PyTreeRestore(restore_args=restore_args)
+    )
     if not isinstance(restored, dict):
         raise ValueError("Restored checkpoint is not a mapping.")
     return _tree_to_state(cast(CheckpointTree, restored))
