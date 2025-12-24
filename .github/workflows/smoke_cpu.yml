@@ -24,4 +24,4 @@ jobs:
           save-cache: "true"
           cache-python: "true"
       - run: uv sync --group dev
-      - run: uv run python -m . train --config config/smoke_cpu.toml
+      - run: uv run python __main__.py train --config config/smoke_cpu.toml
