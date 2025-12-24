@@ -28,7 +28,8 @@ class RunPaths:
     def create(run_id: str) -> RunPaths:
         """Create run directories under /runs/<run_id>."""
         # Compute all run subdirectories and files.
-        root = RUNS_DIR / run_id
+        # Resolve to an absolute path for Orbax/Tensorstore compatibility.
+        root = (RUNS_DIR / run_id).resolve()
         checkpoints = root / "checkpoints"
         metrics_dir = root / "metrics"
         games_dir = root / "games"
