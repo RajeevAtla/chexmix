@@ -48,7 +48,7 @@ class RMSNorm(nnx.Module):
         # Normalize by root-mean-square across features.
         mean_sq = jnp.mean(jnp.square(x), axis=-1, keepdims=True)
         rms = jnp.sqrt(mean_sq + self._eps)
-        return x / rms * self.scale.value
+        return x / rms * self.scale[...]
 
 
 class MultiHeadSelfAttention(nnx.Module):

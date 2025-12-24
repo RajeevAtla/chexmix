@@ -40,8 +40,8 @@ class LinearModel(nnx.Module):
             PolicyValue with constant logits and values.
         """
         batch = obs.shape[0]
-        logits = jnp.ones((batch, 2), dtype=jnp.float32) * self.w.value
-        value = jnp.ones((batch,), dtype=jnp.float32) * self.w.value
+        logits = jnp.ones((batch, 2), dtype=jnp.float32) * self.w[...]
+        value = jnp.ones((batch,), dtype=jnp.float32) * self.w[...]
         return PolicyValue(policy_logits=logits, value=value)
 
 
@@ -118,16 +118,23 @@ def test_train_step_pmap_equivalence() -> None:
             model=model, tx=tx, state=s, batch=b, loss_cfg=loss_cfg
         )
 
-    p_step_multi = jax.pmap(step_fn, axis_name="data", devices=devices)
-    p_step_single = jax.pmap(step_fn, axis_name="data", devices=[devices[0]])
+    p_step_multi = jax.pmap(
+        step_fn,
+        axis_name="data",
+        devices=devices,
+        in_axes=(None, None),
+        out_axes=(None, None),
+    )
+    p_step_single = jax.pmap(
+        step_fn,
+        axis_name="data",
+        devices=[devices[0]],
+        in_axes=(None, None),
+        out_axes=(None, None),
+    )
 
-    state_multi = jax.device_put_replicated(state, devices)
-    batch_multi = jax.device_put_replicated(batch, devices)
-    state_single = jax.device_put_replicated(state, [devices[0]])
-    batch_single = jax.device_put_replicated(batch, [devices[0]])
-
-    out_multi = p_step_multi(state_multi, batch_multi)
-    out_single = p_step_single(state_single, batch_single)
+    out_multi = p_step_multi(state, batch)
+    out_single = p_step_single(state, batch)
 
     # Compare the first replica across outputs.
     state_multi_0, losses_multi_0 = jax.tree_util.tree_map(

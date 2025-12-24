@@ -62,7 +62,7 @@ class ChessTransformer(nnx.Module):
         tokens = obs.reshape(batch, 64, 119)
         x = self.token_embed(tokens)
         # Add positional embeddings for board squares.
-        x = x + self.pos_embed.value
+        x = x + self.pos_embed[...]
         # Apply transformer blocks sequentially.
         for block in self.blocks:
             x = block(x)

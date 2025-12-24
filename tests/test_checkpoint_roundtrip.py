@@ -51,7 +51,7 @@ class TinyModel(nnx.Module):
         Returns:
             Scaled array.
         """
-        return x * self.w.value
+        return x * self.w[...]
 
 
 def test_checkpoint_roundtrip(tmp_path: Path) -> None:

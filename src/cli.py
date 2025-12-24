@@ -532,9 +532,16 @@ def _train(config: dict[str, TomlValue], paths: RunPaths, run_id: str) -> None:
             loss_cfg=loss_cfg,
         )
 
-    p_selfplay = jax.pmap(_selfplay_fn, axis_name="data", devices=devices)
-    p_train = jax.pmap(_train_fn, axis_name="data", devices=devices)
-    state_repl = jax.device_put_replicated(state, devices)
+    p_selfplay = jax.pmap(
+        _selfplay_fn, axis_name="data", devices=devices, in_axes=(0, None)
+    )
+    p_train = jax.pmap(
+        _train_fn,
+        axis_name="data",
+        devices=devices,
+        in_axes=(None, 0),
+        out_axes=(None, None),
+    )
 
     # Bootstrap metrics/PGN to ensure run dirs have artifacts.
     _write_bootstrap_artifacts(paths, run_cfg.name)
@@ -559,7 +566,7 @@ def _train(config: dict[str, TomlValue], paths: RunPaths, run_id: str) -> None:
                     for i in range(device_count)
                 ]
             )
-            traj = p_selfplay(device_keys, state_repl.params)
+            traj = p_selfplay(device_keys, state.params)
             replay.add(_combine_traj(traj))
             games_played += device_count * selfplay_cfg.games_per_device
 
@@ -573,12 +580,12 @@ def _train(config: dict[str, TomlValue], paths: RunPaths, run_id: str) -> None:
         sample_key = rng_stream.key_for_step(Step(step + 10_000))
         batch = replay.sample_batch(sample_key, batch_size)
         shard_batch = _split_batch(batch, device_count)
-        state_repl, losses = p_train(state_repl, shard_batch)
+        state, losses = p_train(state, shard_batch)
 
         # Log scalar metrics for the first replica.
         if (step + 1) % run_cfg.log_every_steps == 0:
             losses_host = jax.tree_util.tree_map(
-                lambda x: float(jax.device_get(x[0])), losses
+                lambda x: float(jax.device_get(x)), losses
             )
             metrics = Metrics(
                 step=step + 1,
@@ -592,9 +599,7 @@ def _train(config: dict[str, TomlValue], paths: RunPaths, run_id: str) -> None:
 
         # Persist checkpoints on schedule.
         if (step + 1) % run_cfg.checkpoint_every_steps == 0:
-            state_host = jax.tree_util.tree_map(
-                lambda x: jax.device_get(x[0]), state_repl
-            )
+            state_host = jax.device_get(state)
             save_checkpoint(manager, state_host)
 
     # Normal completion.
