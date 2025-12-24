@@ -31,13 +31,29 @@ class Losses:
     l2: Array
 
     def tree_flatten(self) -> tuple[tuple[Array, ...], None]:
+        """Flatten Losses for JAX pytree registration.
+
+        Returns:
+            Tuple of children arrays and None aux data.
+        """
+        # Stable field ordering for pytree operations.
         return (self.total, self.policy, self.value, self.l2), None
 
     @classmethod
     def tree_unflatten(
         cls, aux_data: None, children: tuple[Array, ...]
     ) -> Losses:
+        """Reconstruct Losses from pytree children.
+
+        Args:
+            aux_data: Unused auxiliary data.
+            children: Tuple of arrays in field order.
+
+        Returns:
+            Losses instance.
+        """
         del aux_data
+        # Mirror the tree_flatten ordering.
         total, policy, value, l2 = children
         return cls(total=total, policy=policy, value=value, l2=l2)
 
@@ -67,15 +83,19 @@ def compute_losses(
     Returns:
         Losses struct.
     """
+    # Policy loss: cross-entropy vs. MCTS targets.
     log_probs = jax.nn.log_softmax(policy_logits, axis=-1)
     policy_loss = -jnp.sum(policy_targets * log_probs, axis=-1)
+    # Value loss: MSE against final outcomes.
     value_loss = jnp.square(value_pred - outcome)
 
+    # Apply valid-mask to ignore padded steps.
     mask = valid.astype(jnp.float32)
     denom = jnp.maximum(mask.sum(), 1.0)
 
     policy_mean = jnp.sum(policy_loss * mask) / denom
     value_mean = jnp.sum(value_loss * mask) / denom
+    # L2 regularization term is pre-weighted by config.
     l2 = cfg.weight_decay * params_l2
 
     total = policy_mean + cfg.value_loss_weight * value_mean + l2

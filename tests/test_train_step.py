@@ -1,3 +1,5 @@
+"""Tests for training step and TrainState utilities."""
+
 from __future__ import annotations
 
 from typing import cast
@@ -17,10 +19,26 @@ from train.state import TrainState
 
 
 class LinearModel(nnx.Module):
+    """Tiny linear model for training step tests."""
+
     def __init__(self, *, rngs: nnx.Rngs) -> None:
+        """Initialize a single scalar weight.
+
+        Args:
+            rngs: NNX RNGs (unused).
+        """
+        # Deterministic parameter for easy expectation checks.
         self.w = nnx.Param(jnp.array(0.1, dtype=jnp.float32))
 
     def __call__(self, obs: Array) -> PolicyValue:
+        """Return constant logits and values.
+
+        Args:
+            obs: Observation batch.
+
+        Returns:
+            PolicyValue with constant logits and values.
+        """
         batch = obs.shape[0]
         logits = jnp.ones((batch, 2), dtype=jnp.float32) * self.w.value
         value = jnp.ones((batch,), dtype=jnp.float32) * self.w.value
@@ -30,6 +48,12 @@ class LinearModel(nnx.Module):
 def _make_state() -> (
     tuple[LinearModel, TrainState, optax.GradientTransformation]
 ):
+    """Construct a model, TrainState, and optimizer for tests.
+
+    Returns:
+        Tuple of model, TrainState, and optimizer transformation.
+    """
+    # Build model and optimizer with minimal config.
     model = LinearModel(rngs=nnx.Rngs(0))
     params = nnx.state(model)
     tx, _ = make_optimizer(
@@ -52,6 +76,15 @@ def _make_state() -> (
 
 
 def _make_batch(batch_size: int) -> dict[str, Array]:
+    """Create a minimal training batch.
+
+    Args:
+        batch_size: Number of samples to create.
+
+    Returns:
+        Batch dict with obs, policy_targets, outcome, and valid.
+    """
+    # Use trivial values for deterministic losses.
     obs = jnp.zeros((batch_size, 1), dtype=jnp.float32)
     policy_targets = (
         jnp.zeros((batch_size, 2), dtype=jnp.float32).at[:, 0].set(1.0)
@@ -67,10 +100,12 @@ def _make_batch(batch_size: int) -> dict[str, Array]:
 
 
 def test_train_step_pmap_equivalence() -> None:
+    """pmap training matches single-device results."""
     devices = jax.devices()
     if len(devices) < 2:
         pytest.skip("Need at least 2 devices for pmap equivalence test.")
 
+    # Compare multi-device and single-device pmap outputs.
     model, state, tx = _make_state()
     batch = _make_batch(batch_size=2)
     loss_cfg = LossConfig(value_loss_weight=1.0, weight_decay=0.0)
@@ -78,6 +113,7 @@ def test_train_step_pmap_equivalence() -> None:
     def step_fn(
         s: TrainState, b: dict[str, Array]
     ) -> tuple[TrainState, Losses]:
+        """Wrapper to call train_step with closed-over config."""
         return train_step(
             model=model, tx=tx, state=s, batch=b, loss_cfg=loss_cfg
         )
@@ -93,6 +129,7 @@ def test_train_step_pmap_equivalence() -> None:
     out_multi = p_step_multi(state_multi, batch_multi)
     out_single = p_step_single(state_single, batch_single)
 
+    # Compare the first replica across outputs.
     state_multi_0, losses_multi_0 = jax.tree_util.tree_map(
         lambda x: x[0], out_multi
     )
@@ -105,10 +142,12 @@ def test_train_step_pmap_equivalence() -> None:
 
 
 def test_train_step_single_device() -> None:
+    """train_step works with a single-device pmap."""
     devices = jax.devices()
     if not devices:
         pytest.skip("No JAX devices available.")
 
+    # Run a single-device pmap and validate loss finiteness.
     model, state, tx = _make_state()
     batch = _make_batch(batch_size=1)
     loss_cfg = LossConfig(value_loss_weight=1.0, weight_decay=0.0)
@@ -116,6 +155,7 @@ def test_train_step_single_device() -> None:
     def step_fn(
         s: TrainState, b: dict[str, Array]
     ) -> tuple[TrainState, Losses]:
+        """Wrapper to call train_step with closed-over config."""
         return train_step(
             model=model, tx=tx, state=s, batch=b, loss_cfg=loss_cfg
         )
@@ -134,6 +174,7 @@ def test_train_step_single_device() -> None:
 
 
 def test_train_state_tree_unflatten_invalid_step() -> None:
+    """TrainState.tree_unflatten rejects invalid step types."""
     _model, state, _ = _make_state()
     with pytest.raises(TypeError, match="Invalid step type"):
         _ = TrainState.tree_unflatten(
@@ -143,6 +184,7 @@ def test_train_state_tree_unflatten_invalid_step() -> None:
 
 
 def test_params_l2_empty_state() -> None:
+    """_params_l2 returns zero for empty state."""
     empty = nnx.State({})
     value = _params_l2(empty)
     assert value == 0.0

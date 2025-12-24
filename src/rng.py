@@ -32,6 +32,7 @@ class RngStream:
         Returns:
             A PRNGKey derived via fold_in.
         """
+        # Fold in the step to keep deterministic per-step keys.
         return jax.random.fold_in(self.base_key, int(step))
 
     def key_for_device(self, step_key: PRNGKey, axis_index: int) -> PRNGKey:
@@ -44,4 +45,5 @@ class RngStream:
         Returns:
             A PRNGKey derived via fold_in.
         """
+        # Fold in the device index to shard randomness across devices.
         return jax.random.fold_in(step_key, axis_index)

@@ -33,6 +33,7 @@ def _apply_model(
     graphdef: nnx.GraphDef[nnx.Module], params: nnx.State, obs: Array
 ) -> tuple[Array, Array]:
     """Apply an NNX model with its parameters."""
+    # Merge graphdef/params to get a callable model instance.
     merged = nnx.merge(graphdef, params)
     output = merged(obs)
     return output.policy_logits, output.value
@@ -40,6 +41,7 @@ def _apply_model(
 
 def _params_l2(params: nnx.State) -> Array:
     """Compute L2 norm of parameter leaves."""
+    # Sum squared values for all array leaves.
     leaves = jax.tree_util.tree_leaves(params)
     terms = [jnp.sum(jnp.square(x)) for x in leaves if isinstance(x, jax.Array)]
     if not terms:
@@ -62,9 +64,11 @@ def train_step(
     - grads aggregated by lax.pmean(axis_name="data")
     """
 
+    # Split model to use explicit params in loss function.
     graphdef, _ = nnx.split(model)
 
     def loss_fn(params: nnx.State) -> tuple[Array, Losses]:
+        """Compute losses for a given parameter set."""
         policy_logits, value_pred = _apply_model(graphdef, params, batch["obs"])
         losses = compute_losses(
             policy_logits=policy_logits,
@@ -77,13 +81,16 @@ def train_step(
         )
         return losses.total, losses
 
+    # Compute gradients and aggregate across devices.
     (_, losses), grads = jax.value_and_grad(loss_fn, has_aux=True)(state.params)
     grads = jax.lax.pmean(grads, axis_name="data")
     losses = jax.tree_util.tree_map(lambda x: jax.lax.pmean(x, "data"), losses)
 
+    # Apply optimizer update to params.
     updates, opt_state = tx.update(grads, state.opt_state, state.params)
     params = cast(nnx.State, optax.apply_updates(state.params, updates))
 
+    # Advance RNG stream.
     rng_key, next_rng = jax.random.split(state.rng_key)
     new_state = TrainState(
         step=Step(int(state.step) + 1),

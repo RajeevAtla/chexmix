@@ -1,3 +1,5 @@
+"""Tests for PGN encoding and formatting."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -7,6 +9,8 @@ from pgn.writer import PgnHeaders, format_pgn, write_pgn_file
 
 
 def test_decode_action_basic_planes() -> None:
+    """decode_action handles basic move planes."""
+    # Action 0 should be a simple forward move.
     move = decode_action(0)
     assert move == DecodedMove(
         from_file=0,
@@ -22,6 +26,8 @@ def test_decode_action_basic_planes() -> None:
 
 
 def test_decode_action_promotion_plane() -> None:
+    """decode_action handles promotion plane offsets."""
+    # Promotion plane should set promo to rook.
     promo = decode_action(64)
     assert promo.promo == "r"
     assert promo.from_file == 0
@@ -29,6 +35,8 @@ def test_decode_action_promotion_plane() -> None:
 
 
 def test_decode_action_invalid() -> None:
+    """decode_action raises on invalid indices."""
+    # Negative action should raise ValueError.
     try:
         _ = decode_action(-1)
     except ValueError:
@@ -38,6 +46,8 @@ def test_decode_action_invalid() -> None:
 
 
 def test_format_and_write_pgn(tmp_path) -> None:
+    """format_pgn and write_pgn_file output valid PGN."""
+    # Build headers and a short move list.
     headers = PgnHeaders(
         event="SelfPlay",
         site="Local",
@@ -49,6 +59,7 @@ def test_format_and_write_pgn(tmp_path) -> None:
     )
     moves = ["e2e4", "e7e5", "g1f3"]
     pgn = format_pgn(headers, moves)
+    # Validate headers and movetext content.
     assert '[Event "SelfPlay"]' in pgn
     assert '[Result "1-0"]' in pgn
     assert "1. e2e4 e7e5 2. g1f3 1-0" in pgn

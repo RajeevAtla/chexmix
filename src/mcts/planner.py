@@ -48,6 +48,17 @@ class MctsOutput:
 def _apply_model(
     graphdef: nnx.GraphDef[nnx.Module], params: nnx.State, obs: Array
 ) -> PolicyValue:
+    """Apply an NNX model graphdef with explicit parameters.
+
+    Args:
+        graphdef: Split NNX graph definition.
+        params: Parameter/state pytree.
+        obs: Observation batch.
+
+    Returns:
+        PolicyValue outputs for the batch.
+    """
+    # Merge graphdef and parameters to get a callable module.
     model_with_params = nnx.merge(graphdef, params)
     return model_with_params(obs)
 
@@ -75,9 +86,11 @@ def run_mcts(
         MctsOutput with sampled/selected action and action_weights distribution.
     """
 
+    # Split the module so params can be passed explicitly.
     graphdef, _ = nnx.split(model)
 
     def root_fn(root_state: pgx.State) -> mctx.RootFnOutput:
+        """Compute root priors/value for MCTS."""
         pv = _apply_model(graphdef, params, root_state.observation)
         logits = mask_illegal_logits(
             pv.policy_logits, root_state.legal_action_mask
@@ -94,6 +107,7 @@ def run_mcts(
         action: Array,
         embed: mctx_base.RecurrentState,
     ) -> tuple[mctx.RecurrentFnOutput, mctx_base.RecurrentState]:
+        """Advance environment and compute priors/value for child states."""
         _ = rng
         state = cast(pgx.State, embed)
         params_state = cast(nnx.State, params)
@@ -116,6 +130,7 @@ def run_mcts(
         )
         return output, cast(mctx_base.RecurrentState, next_state)
 
+    # Seed MCTS at the root and run a Gumbel MuZero policy.
     root = root_fn(state)
     invalid_actions = jnp.logical_not(state.legal_action_mask)
     output = mctx.gumbel_muzero_policy(
@@ -129,12 +144,14 @@ def run_mcts(
         gumbel_scale=cfg.gumbel_scale,
         qtransform=mctx.qtransform_by_parent_and_siblings,
     )
+    # Normalize action weights after masking illegal actions.
     legal = state.legal_action_mask
     action_weights = jnp.where(legal, output.action_weights, 0.0)
     weight_sum = jnp.sum(action_weights, axis=-1, keepdims=True)
     action_weights = jnp.where(
         weight_sum > 0, action_weights / weight_sum, action_weights
     )
+    # Ensure the selected action is legal, falling back if needed.
     action = jnp.asarray(output.action)
     legal_action = jnp.take_along_axis(legal, action[:, None], axis=1).squeeze(
         -1

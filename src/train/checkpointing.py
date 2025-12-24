@@ -43,6 +43,15 @@ def make_checkpoint_manager(
 
 
 def _state_to_tree(state: TrainState) -> CheckpointTree:
+    """Convert TrainState to a checkpointable dict.
+
+    Args:
+        state: TrainState to serialize.
+
+    Returns:
+        Dict of checkpoint fields.
+    """
+    # Use simple primitives for Orbax PyTree serialization.
     return {
         "step": int(state.step),
         "params": state.params,
@@ -52,17 +61,35 @@ def _state_to_tree(state: TrainState) -> CheckpointTree:
 
 
 def _is_value_dict(value: object) -> TypeGuard[dict[str, object]]:
+    """Check for a serialized nnx.Param wrapper dict.
+
+    Args:
+        value: Candidate object.
+
+    Returns:
+        True if the dict only contains a "value" key.
+    """
     if not isinstance(value, dict):
         return False
     return set(value.keys()) == {"value"}
 
 
 def _normalize_pytree(value: object) -> object:
+    """Normalize a pytree to restore nnx.Param leaves.
+
+    Args:
+        value: Serialized pytree value.
+
+    Returns:
+        Normalized pytree with nnx.Param where appropriate.
+    """
+    # Re-wrap serialized Params so NNX has the correct leaf types.
     if _is_value_dict(value):
         value_dict = cast(dict[str, object], value)
         leaf = value_dict["value"]
         if isinstance(leaf, jax.Array):
             return nnx.Param(leaf)
+    # Recursively normalize containers.
     if isinstance(value, list):
         return tuple(_normalize_pytree(item) for item in value)
     if isinstance(value, dict):
@@ -71,14 +98,33 @@ def _normalize_pytree(value: object) -> object:
 
 
 def _as_state_if_dict(value: object) -> object:
+    """Convert dicts to nnx.State for optimizer state restoration.
+
+    Args:
+        value: Candidate object.
+
+    Returns:
+        nnx.State if value is a dict, otherwise value.
+    """
+    # Orbax may restore params as raw dicts; wrap them if needed.
     if isinstance(value, dict):
         return nnx.State(value)
     return value
 
 
 def _restore_opt_state(value: object) -> object:
+    """Restore Optax optimizer state from a serialized structure.
+
+    Args:
+        value: Serialized optimizer state.
+
+    Returns:
+        Restored optimizer state object.
+    """
+    # Handle the absence of optimizer state explicitly.
     if value is None:
         return optax.EmptyState()
+    # Recursively rebuild tuples/lists and Optax state structs.
     if isinstance(value, list):
         return tuple(_restore_opt_state(item) for item in value)
     if isinstance(value, tuple):
@@ -97,6 +143,7 @@ def _restore_opt_state(value: object) -> object:
             return optax.ScaleByScheduleState(
                 count=cast(jax.Array, value_dict["count"])
             )
+        # Fall back to restoring nested mappings.
         return {
             key: _restore_opt_state(item) for key, item in value_dict.items()
         }
@@ -104,6 +151,18 @@ def _restore_opt_state(value: object) -> object:
 
 
 def _tree_to_state(tree: CheckpointTree) -> TrainState:
+    """Convert a checkpoint tree back into a TrainState.
+
+    Args:
+        tree: Mapping loaded from Orbax.
+
+    Returns:
+        Reconstructed TrainState.
+
+    Raises:
+        ValueError: If required fields are missing or invalid.
+    """
+    # Validate required fields and normalize parameter containers.
     step_value = tree.get("step")
     params = tree.get("params")
     opt_state = tree.get("opt_state")
@@ -122,6 +181,7 @@ def _tree_to_state(tree: CheckpointTree) -> TrainState:
         params_state = nnx.State(normalized)
     else:
         raise ValueError("Checkpoint missing params state.")
+    # Rebuild optimizer state and RNG key.
     if opt_state is None:
         raise ValueError("Checkpoint missing optimizer state.")
     opt_state = cast(optax.OptState, _restore_opt_state(opt_state))

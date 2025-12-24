@@ -24,6 +24,7 @@ def make_optimizer(
     cfg: OptimConfig,
 ) -> tuple[optax.GradientTransformation, optax.Schedule]:
     """Create (optimizer, schedule) tuple."""
+    # Combine warmup with cosine decay over total steps.
     schedule = optax.warmup_cosine_decay_schedule(
         init_value=0.0,
         peak_value=cfg.learning_rate,
@@ -32,6 +33,7 @@ def make_optimizer(
         end_value=0.0,
     )
 
+    # Apply gradient clipping before AdamW updates.
     tx = optax.chain(
         optax.clip_by_global_norm(cfg.grad_clip_norm),
         optax.adamw(schedule, weight_decay=cfg.weight_decay),

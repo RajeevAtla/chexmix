@@ -58,6 +58,15 @@ def save_toml(path: Path, data: dict[str, TomlValue]) -> None:
 
 
 def _is_str_key_dict(value: object) -> TypeGuard[dict[str, object]]:
+    """Check whether a value is a dict with string keys.
+
+    Args:
+        value: Candidate object.
+
+    Returns:
+        True if the value is a dict and all keys are strings.
+    """
+    # Keep a narrow check to avoid leaking object-typed dicts.
     if not isinstance(value, dict):
         return False
     return all(isinstance(key, str) for key in value)
@@ -66,6 +75,7 @@ def _is_str_key_dict(value: object) -> TypeGuard[dict[str, object]]:
 def _validate_toml_dict(raw: dict[str, object]) -> dict[str, TomlValue]:
     """Validate TOML data without leaking `object` to callers."""
     validated: dict[str, TomlValue] = {}
+    # Validate nested tables and scalars recursively.
     for key, value in raw.items():
         if _is_str_key_dict(value):
             nested = _validate_toml_dict(cast(dict[str, object], value))
@@ -77,9 +87,22 @@ def _validate_toml_dict(raw: dict[str, object]) -> dict[str, TomlValue]:
 
 
 def _validate_toml_value(value: object) -> TomlValue:
+    """Validate a TOML value against allowed types.
+
+    Args:
+        value: Parsed TOML value.
+
+    Returns:
+        Validated TomlValue.
+
+    Raises:
+        ValueError: If the value is an unsupported type.
+    """
+    # Scalars are allowed directly.
     if isinstance(value, str | int | float | bool):
         return value
 
+    # Lists are allowed but cannot contain dicts.
     if isinstance(value, list):
         validated_list: list[TomlValue] = []
         for item in value:
@@ -96,6 +119,7 @@ def _dumps_table(table: dict[str, TomlValue], prefix: str) -> str:
     scalar_items: dict[str, TomlValue] = {}
     table_items: dict[str, dict[str, TomlValue]] = {}
 
+    # Partition tables from scalars for deterministic ordering.
     for key, value in table.items():
         if isinstance(value, dict):
             table_items[key] = value
@@ -104,6 +128,7 @@ def _dumps_table(table: dict[str, TomlValue], prefix: str) -> str:
 
     lines: list[str] = []
     if prefix:
+        # Emit table header for nested tables.
         lines.append(f"[{prefix}]")
 
     for key in sorted(scalar_items):
@@ -121,6 +146,18 @@ def _dumps_table(table: dict[str, TomlValue], prefix: str) -> str:
 
 
 def _format_value(value: TomlValue) -> str:
+    """Format a TOML value into a string representation.
+
+    Args:
+        value: TomlValue to format.
+
+    Returns:
+        Serialized TOML literal.
+
+    Raises:
+        ValueError: If the value type is unsupported.
+    """
+    # Handle booleans first so ints don't swallow them.
     if isinstance(value, bool):
         return "true" if value else "false"
 
@@ -128,10 +165,12 @@ def _format_value(value: TomlValue) -> str:
         return repr(value)
 
     if isinstance(value, str):
+        # Escape backslashes and quotes to keep output valid.
         escaped = value.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
 
     if isinstance(value, list):
+        # Format lists recursively.
         rendered = ", ".join(_format_value(item) for item in value)
         return f"[{rendered}]"
 

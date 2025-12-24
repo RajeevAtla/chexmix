@@ -1,3 +1,5 @@
+"""CLI entrypoint and helper tests."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,6 +39,12 @@ from train.state import TrainState
 
 
 def _minimal_train_config() -> dict[str, TomlValue]:
+    """Return a minimal config dict for fast training tests.
+
+    Returns:
+        Minimal training configuration as TOML-compatible values.
+    """
+    # Keep values tiny to reduce runtime.
     return {
         "run": {
             "name": "demo",
@@ -81,6 +89,20 @@ def _fake_selfplay(
     selfplay_cfg: SelfPlayConfig,
     mcts_cfg: object,
 ) -> Trajectory:
+    """Generate a deterministic dummy trajectory for training tests.
+
+    Args:
+        env: Unused environment placeholder.
+        model: Unused model placeholder.
+        params: Unused params placeholder.
+        rng_key: Unused RNG placeholder.
+        selfplay_cfg: Self-play config used for shapes.
+        mcts_cfg: Unused MCTS config placeholder.
+
+    Returns:
+        Trajectory filled with zeros and uniform policy targets.
+    """
+    # Build predictable arrays for easy shape checks.
     del env, model, params, rng_key, mcts_cfg
     cfg = selfplay_cfg
     batch = cfg.games_per_device
@@ -107,12 +129,27 @@ def _fake_train_step(
     batch: dict[str, jax.Array],
     loss_cfg: object,
 ) -> tuple[TrainState, Losses]:
+    """Return a no-op TrainState and zero losses.
+
+    Args:
+        model: Unused model placeholder.
+        tx: Unused optimizer placeholder.
+        state: TrainState to return unchanged.
+        batch: Unused batch placeholder.
+        loss_cfg: Unused loss config placeholder.
+
+    Returns:
+        Same TrainState and zero Losses.
+    """
+    # Keep loss values deterministic.
     del model, tx, batch, loss_cfg
     zero = jnp.array(0.0, dtype=jnp.float32)
     return state, Losses(total=zero, policy=zero, value=zero, l2=zero)
 
 
 def test_build_parser_train_args() -> None:
+    """Parser recognizes train command and config path."""
+    # Parse a sample command.
     parser = build_parser()
     args = parser.parse_args(["train", "--config", "config/default.toml"])
     assert args.command == "train"
@@ -122,6 +159,8 @@ def test_build_parser_train_args() -> None:
 def test_main_returns_zero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Main returns zero for eval command."""
+    # Run eval in a temp working directory.
     monkeypatch.chdir(tmp_path)
     config_path = (
         Path(__file__).resolve().parents[1] / "config" / "default.toml"
@@ -132,7 +171,9 @@ def test_main_returns_zero(
 def test_main_train_writes_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Train command writes expected run artifacts."""
     monkeypatch.chdir(tmp_path)
+    # Stub out heavy training dependencies.
     monkeypatch.setattr("cli.generate_selfplay_trajectories", _fake_selfplay)
     monkeypatch.setattr("cli.train_step", _fake_train_step)
     monkeypatch.setattr("cli.make_checkpoint_manager", lambda *_: object())
@@ -140,6 +181,7 @@ def test_main_train_writes_artifacts(
     config_path = tmp_path / "config.toml"
     save_toml(config_path, _minimal_train_config())
 
+    # CLI should complete successfully.
     assert main(["train", "--config", str(config_path)]) == 0
 
     runs_dir = tmp_path / "runs"
@@ -155,6 +197,7 @@ def test_main_train_writes_artifacts(
 def test_main_missing_run_table(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Missing run table raises ValueError."""
     monkeypatch.chdir(tmp_path)
     config_path = tmp_path / "config.toml"
     save_toml(config_path, {"env": {"id": "chess"}})
@@ -165,6 +208,7 @@ def test_main_missing_run_table(
 def test_main_missing_run_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Missing run name raises ValueError."""
     monkeypatch.chdir(tmp_path)
     config_path = tmp_path / "config.toml"
     save_toml(config_path, {"run": {"seed": 42}})
@@ -173,6 +217,7 @@ def test_main_missing_run_name(
 
 
 def test_get_helpers_and_parsers() -> None:
+    """Helper getters enforce types and missing key handling."""
     table: dict[str, TomlValue] = {"count": 3, "name": "demo"}
     assert _get_int(table, "count") == 3
     assert _get_str(table, "name") == "demo"
@@ -198,8 +243,10 @@ def test_get_helpers_and_parsers() -> None:
 def test_append_event_and_git_sha(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Event appending and git SHA resolution behave correctly."""
     monkeypatch.chdir(tmp_path)
     paths = RunPaths.create("run")
+    # Seed events to validate index incrementing.
     save_toml(
         paths.events_toml, {"event_bad": {"event": "x"}, "event_0002": {}}
     )
@@ -207,12 +254,14 @@ def test_append_event_and_git_sha(
     data = load_toml(paths.events_toml)
     assert "event_0003" in data
 
+    # No .git directory yields unknown.
     assert _git_sha() == "unknown"
     git_dir = tmp_path / ".git" / "refs" / "heads"
     git_dir.mkdir(parents=True)
     (tmp_path / ".git" / "HEAD").write_text(
         "ref: refs/heads/main", encoding="utf-8"
     )
+    # Missing ref target yields unknown.
     assert _git_sha() == "unknown"
     (git_dir / "main").write_text("deadbeef", encoding="utf-8")
     assert _git_sha() == "deadbeef"
@@ -223,6 +272,7 @@ def test_append_event_and_git_sha(
 def test_events_and_pgn(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Start/stop events and PGN snapshots are written."""
     monkeypatch.chdir(tmp_path)
     paths = RunPaths.create("run")
     run_id = _run_id("demo")
@@ -236,6 +286,7 @@ def test_events_and_pgn(
 
 
 def test_split_batch_and_combine_traj() -> None:
+    """Batch sharding and trajectory merging preserve shapes."""
     batch = {
         "obs": jnp.zeros((4, 8, 8, 119), dtype=jnp.float32),
         "policy_targets": jnp.zeros((4, 4672), dtype=jnp.float32),
@@ -254,6 +305,7 @@ def test_split_batch_and_combine_traj() -> None:
 
 
 def test_train_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Training loop runs end-to-end with stubs."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("cli.generate_selfplay_trajectories", _fake_selfplay)
     monkeypatch.setattr("cli.train_step", _fake_train_step)
@@ -268,6 +320,7 @@ def test_train_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_train_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Training stops early when runtime limit is hit."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("cli.generate_selfplay_trajectories", _fake_selfplay)
     monkeypatch.setattr("cli.train_step", _fake_train_step)
@@ -287,6 +340,7 @@ def test_train_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_train_no_devices(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Training raises when no devices are available."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("cli.jax.local_device_count", lambda: 0)
     with pytest.raises(ValueError, match="No JAX devices available"):
@@ -296,6 +350,7 @@ def test_train_no_devices(
 def test_eval_writes_results(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Eval writes results TOML."""
     monkeypatch.chdir(tmp_path)
     config = _minimal_train_config()
     config["run"] = {
@@ -315,6 +370,7 @@ def test_eval_writes_results(
 def test_eval_with_checkpoints_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Eval accepts explicit checkpoints_dir configuration."""
     monkeypatch.chdir(tmp_path)
     config = _minimal_train_config()
     config["eval"] = {"checkpoints_dir": "runs/demo/checkpoints"}
@@ -333,6 +389,7 @@ def test_eval_with_checkpoints_dir(
 
 
 def test_parse_env_and_run_config() -> None:
+    """Parsed run/env configs return expected values."""
     config = {
         "run": {
             "name": "demo",

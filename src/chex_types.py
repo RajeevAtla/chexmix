@@ -14,9 +14,12 @@ from typing import NewType
 
 import jax
 
+# Canonical array types used across modules.
 type Array = jax.Array
-type PRNGKey = jax.Array  # shape (2,), dtype uint32
+# PRNGKey is a JAX uint32[2] array by convention.
+type PRNGKey = jax.Array
 
+# Strongly-typed integer wrappers for counters/IDs.
 Step = NewType("Step", int)
 GameId = NewType("GameId", int)
 

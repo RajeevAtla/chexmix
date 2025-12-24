@@ -29,6 +29,7 @@ class PgxFns:
 
 def make_chess_env() -> pgx.Env:
     """Create the PGX chess environment."""
+    # Centralize env creation for consistency in tests/training.
     return pgx.make("chess")
 
 
@@ -41,6 +42,7 @@ def compile_pgx_fns(env: pgx.Env) -> PgxFns:
     Returns:
         PgxFns containing compiled init_fn and step_fn.
     """
+    # Vectorize over batch dimension and jit for speed.
     init_fn = jax.jit(jax.vmap(env.init))
     step_fn = jax.jit(jax.vmap(env.step))
     return PgxFns(init_fn=init_fn, step_fn=step_fn)
@@ -58,5 +60,6 @@ def mask_illegal_logits(
     Returns:
         Masked logits (B, 4672)
     """
+    # Use dtype-specific min to emulate -inf without NaNs.
     neg_inf = jnp.finfo(policy_logits.dtype).min
     return jnp.where(legal_action_mask, policy_logits, neg_inf)

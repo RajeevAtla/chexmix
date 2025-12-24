@@ -32,6 +32,7 @@ class SelfPlayConfig:
 def _tree_where(mask: Array, new: pgx.State, old: pgx.State) -> pgx.State:
     """Select between two PGX states using a per-batch mask."""
 
+    # Use mask broadcasting for arbitrary leaf shapes.
     def _select(new_leaf: Array, old_leaf: Array) -> Array:
         if new_leaf.ndim == 0:
             return jnp.where(mask, new_leaf, old_leaf)
@@ -43,6 +44,7 @@ def _tree_where(mask: Array, new: pgx.State, old: pgx.State) -> pgx.State:
 
 def _safe_policy_targets(action_weights: Array, valid: Array) -> Array:
     """Mask policy targets for invalid timesteps."""
+    # Zero out targets for terminal or padded steps.
     return jnp.where(
         valid[:, None], action_weights, jnp.zeros_like(action_weights)
     )
@@ -50,6 +52,7 @@ def _safe_policy_targets(action_weights: Array, valid: Array) -> Array:
 
 def _zero_outcome(outcome: Array, valid: Array, dtype: jnp.dtype) -> Array:
     """Zero invalid outcomes."""
+    # Ensure padded steps contribute zero to losses.
     return jnp.where(valid, outcome, jnp.zeros_like(outcome, dtype=dtype))
 
 
@@ -66,16 +69,19 @@ def generate_selfplay_trajectories(
     batch_size = selfplay_cfg.games_per_device
     max_moves = selfplay_cfg.max_moves
 
+    # Initialize a batch of games.
     init_keys = jax.random.split(rng_key, batch_size)
     state = jax.vmap(env.init)(init_keys)
 
     def step_fn(
         carry: pgx.State, step_idx: Array
     ) -> tuple[pgx.State, tuple[Array, Array, Array, Array]]:
+        """Advance one step and collect trajectory data."""
         obs = carry.observation
         player_id = carry.current_player
         valid = jnp.logical_not(carry.terminated)
 
+        # Derive step-specific key and run MCTS.
         step_key = jax.random.fold_in(rng_key, step_idx)
         mcts_out: MctsOutput = run_mcts(
             env=env,
@@ -87,19 +93,23 @@ def generate_selfplay_trajectories(
         )
         policy_targets = _safe_policy_targets(mcts_out.action_weights, valid)
 
+        # Step only for active games; keep terminal states unchanged.
         next_state = jax.vmap(env.step)(carry, mcts_out.action)
         carry = _tree_where(valid, next_state, carry)
 
         return carry, (obs, policy_targets, player_id, valid)
 
+    # Unroll self-play for a fixed number of moves.
     steps = jnp.arange(max_moves)
     final_state, history = jax.lax.scan(step_fn, state, steps)
     obs, policy_targets, player_id, valid = history
+    # Swap scan axes to (B, T, ...).
     obs = jnp.swapaxes(obs, 0, 1)
     policy_targets = jnp.swapaxes(policy_targets, 0, 1)
     player_id = jnp.swapaxes(player_id, 0, 1)
     valid = jnp.swapaxes(valid, 0, 1)
 
+    # Compute outcome from final rewards for each player's perspective.
     rewards = final_state.rewards
     rewards_expanded = rewards[:, None, :]
     player_id_expanded = player_id[..., None]

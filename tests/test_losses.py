@@ -1,3 +1,5 @@
+"""Tests for loss computation utilities."""
+
 from __future__ import annotations
 
 import chex
@@ -7,6 +9,8 @@ from train.losses import LossConfig, compute_losses
 
 
 def test_compute_losses_masking_and_values() -> None:
+    """compute_losses applies masking and weights correctly."""
+    # Build a tiny deterministic batch.
     policy_logits = jnp.array([[0.0, 0.0], [0.0, 0.0]], dtype=jnp.float32)
     policy_targets = jnp.array([[1.0, 0.0], [0.0, 1.0]], dtype=jnp.float32)
     value_pred = jnp.array([0.5, -0.5], dtype=jnp.float32)
@@ -15,6 +19,7 @@ def test_compute_losses_masking_and_values() -> None:
     params_l2 = jnp.array(2.0, dtype=jnp.float32)
     cfg = LossConfig(value_loss_weight=2.0, weight_decay=0.1)
 
+    # Compute losses using the provided config.
     losses = compute_losses(
         policy_logits=policy_logits,
         value_pred=value_pred,
@@ -25,6 +30,7 @@ def test_compute_losses_masking_and_values() -> None:
         cfg=cfg,
     )
 
+    # Expected values from hand calculation.
     expected_policy = jnp.log(jnp.array(2.0))
     expected_value = jnp.array(0.25)
     expected_l2 = jnp.array(0.2)

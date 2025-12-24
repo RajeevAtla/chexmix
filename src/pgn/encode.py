@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# Directions for queen-like moves (7 distances each).
 _QUEEN_DIRS = (
     (0, 1),  # N
     (0, -1),  # S
@@ -19,6 +20,7 @@ _QUEEN_DIRS = (
     (-1, -1),  # SW
 )
 
+# Knight move offsets.
 _KNIGHT_DIRS = (
     (2, 1),
     (1, 2),
@@ -30,7 +32,9 @@ _KNIGHT_DIRS = (
     (2, -1),
 )
 
+# Promotion pieces encoded in underpromotion planes.
 _PROMO_PIECES = ("r", "b", "n")
+# Promotion directions: forward and diagonals.
 _PROMO_DIRS = (
     (0, 1),  # forward
     (-1, 1),  # forward-left
@@ -63,13 +67,16 @@ def decode_action(action: int) -> DecodedMove:
     Raises:
         ValueError: if action is out of range.
     """
+    # Validate range before decoding.
     if action < 0 or action >= 64 * 73:
         raise ValueError("action out of range")
+    # Decode from-square and plane index.
     from_square = action // 73
     plane = action % 73
     from_rank = from_square // 8
     from_file = from_square % 8
     if plane < 56:
+        # Queen-like sliding moves are encoded in 8 dirs * 7 distances.
         dir_idx = plane // 7
         dist = (plane % 7) + 1
         dx, dy = _QUEEN_DIRS[dir_idx]
@@ -83,6 +90,7 @@ def decode_action(action: int) -> DecodedMove:
             promo="",
         )
     if plane < 64:
+        # Knight moves are stored in 8 planes after sliding moves.
         knight_idx = plane - 56
         dx, dy = _KNIGHT_DIRS[knight_idx]
         return DecodedMove(
@@ -92,6 +100,7 @@ def decode_action(action: int) -> DecodedMove:
             to_rank=from_rank + dy,
             promo="",
         )
+    # Promotion planes cover forward and diagonal promotions.
     promo_plane = plane - 64
     promo_idx = promo_plane // 3
     dir_idx = promo_plane % 3

@@ -31,6 +31,7 @@ class ReplayBuffer:
 
     def __init__(self, cfg: ReplayConfig) -> None:
         """Initialize empty buffer."""
+        # Basic ring buffer bookkeeping.
         self._capacity = cfg.capacity
         self._min_to_sample = cfg.min_to_sample
         self._size = 0
@@ -41,6 +42,7 @@ class ReplayBuffer:
 
     def add(self, traj: Trajectory) -> None:
         """Insert a batch of trajectories into the buffer."""
+        # Flatten time dimension and filter by valid mask.
         obs_flat = jnp.reshape(traj.obs, (-1, *traj.obs.shape[2:]))
         policy_flat = jnp.reshape(
             traj.policy_targets, (-1, traj.policy_targets.shape[-1])
@@ -48,10 +50,12 @@ class ReplayBuffer:
         outcome_flat = jnp.reshape(traj.outcome, (-1,))
         valid_flat = jnp.reshape(traj.valid, (-1,))
 
+        # Pull validity to host for filtering.
         valid_np = jax.device_get(valid_flat).astype(bool)
         if not valid_np.any():
             return
 
+        # Keep only valid entries and truncate to capacity.
         obs_np = jax.device_get(obs_flat)[valid_np]
         policy_np = jax.device_get(policy_flat)[valid_np]
         outcome_np = jax.device_get(outcome_flat)[valid_np]
@@ -64,6 +68,7 @@ class ReplayBuffer:
             self._write_idx = 0
             self._size = self._capacity
 
+        # Lazily initialize storage on first insert.
         if self._obs is None:
             self._obs = jnp.zeros(
                 (self._capacity, *obs_np.shape[1:]), dtype=obs_np.dtype
@@ -73,12 +78,14 @@ class ReplayBuffer:
             )
             self._outcome = jnp.zeros((self._capacity,), dtype=outcome_np.dtype)
 
+        # Insert into ring buffer and update pointers.
         self._insert(obs_np, policy_np, outcome_np, count)
         self._size = min(self._capacity, self._size + count)
         self._write_idx = (self._write_idx + count) % self._capacity
 
     def can_sample(self) -> bool:
         """Return True if buffer has enough data to sample."""
+        # Require minimum number of samples to start training.
         return self._size >= self._min_to_sample
 
     def sample_batch(
@@ -93,14 +100,17 @@ class ReplayBuffer:
               - outcome: (B,)
               - valid: (B,)
         """
+        # Guard against sampling before any data is added.
         if self._obs is None or self._policy is None or self._outcome is None:
             raise ValueError("ReplayBuffer is empty.")
         if self._size == 0:
             raise ValueError("ReplayBuffer is empty.")
 
+        # Sample indices deterministically from RNG key.
         indices = jax.random.randint(rng_key, (batch_size,), 0, self._size)
         indices_np = jax.device_get(indices)
 
+        # Gather samples into contiguous arrays.
         obs = jnp.asarray(self._obs[indices_np])
         policy = jnp.asarray(self._policy[indices_np])
         outcome = jnp.asarray(self._outcome[indices_np])
@@ -121,9 +131,11 @@ class ReplayBuffer:
         count: int,
     ) -> None:
         """Insert numpy data into the ring buffer."""
+        # Ensure storage is initialized before insert.
         if self._obs is None or self._policy is None or self._outcome is None:
             raise ValueError("ReplayBuffer storage not initialized.")
 
+        # Write in two segments if wrapping around the ring buffer.
         first = min(self._capacity - self._write_idx, count)
         second = count - first
 

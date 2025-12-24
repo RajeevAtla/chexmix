@@ -1,3 +1,5 @@
+"""Tests for deterministic RNG stream helpers."""
+
 from __future__ import annotations
 
 import jax
@@ -8,6 +10,8 @@ from rng import RngStream
 
 
 def test_rng_stream_determinism() -> None:
+    """RngStream yields deterministic keys for the same step."""
+    # Same step should yield identical keys.
     base_key = jax.random.PRNGKey(42)
     stream = RngStream(base_key=base_key)
 
@@ -20,6 +24,8 @@ def test_rng_stream_determinism() -> None:
 
 
 def test_rng_stream_device_key() -> None:
+    """RngStream yields deterministic device keys per axis index."""
+    # Axis-specific fold-in should differ by device index.
     base_key = jax.random.PRNGKey(42)
     stream = RngStream(base_key=base_key)
     step_key = stream.key_for_step(Step(3))

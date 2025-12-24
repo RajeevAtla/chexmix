@@ -34,6 +34,12 @@ class Trajectory:
     outcome: Array
 
     def tree_flatten(self) -> tuple[tuple[Array, ...], None]:
+        """Flatten Trajectory for JAX pytree registration.
+
+        Returns:
+            Tuple of children arrays and None aux data.
+        """
+        # Preserve a stable field ordering for pytree ops.
         return (
             (
                 self.obs,
@@ -49,7 +55,17 @@ class Trajectory:
     def tree_unflatten(
         cls, aux_data: None, children: tuple[Array, ...]
     ) -> Trajectory:
+        """Reconstruct a Trajectory from pytree children.
+
+        Args:
+            aux_data: Unused auxiliary data.
+            children: Tuple of arrays in field order.
+
+        Returns:
+            Reconstructed Trajectory instance.
+        """
         del aux_data
+        # Unpack in the same order as tree_flatten.
         obs, policy_targets, player_id, valid, outcome = children
         return cls(
             obs=obs,
