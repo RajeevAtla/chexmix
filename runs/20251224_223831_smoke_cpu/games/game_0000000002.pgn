@@ -1,0 +1,9 @@
+[Event "smoke_cpu"]
+[Site "local"]
+[Date "2025-12-24"]
+[Round "2"]
+[White "selfplay"]
+[Black "selfplay"]
+[Result "*"]
+
+*

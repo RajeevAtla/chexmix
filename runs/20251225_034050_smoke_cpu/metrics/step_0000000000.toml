@@ -1,0 +1,6 @@
+entropy_mean = 0.0
+loss_policy = 0.0
+loss_total = 0.0
+loss_value = 0.0
+step = 0
+value_mean = 0.0

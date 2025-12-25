@@ -48,7 +48,9 @@ def make_checkpoint_manager(
     """Create an Orbax CheckpointManager."""
     checkpointer = ocp.PyTreeCheckpointer()
     options = ocp.CheckpointManagerOptions(
-        max_to_keep=cfg.max_to_keep, create=True
+        max_to_keep=cfg.max_to_keep,
+        create=True,
+        enable_async_checkpointing=False,
     )
     return ocp.CheckpointManager(checkpoints_dir, checkpointer, options)
 
