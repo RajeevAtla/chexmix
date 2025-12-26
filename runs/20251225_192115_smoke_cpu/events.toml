@@ -1,0 +1,9 @@
+[event_0001]
+event = "start"
+git_sha = "f31c32bb67dfb80218fb08ba7e2d3904e071d581"
+host = "Blah"
+platform = "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39"
+python = "3.13.8"
+run_id = "20251225_192115_smoke_cpu"
+run_name = "smoke_cpu"
+started_utc = "2025-12-25T19:21:15.688597+00:00"
