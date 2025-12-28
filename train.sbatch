@@ -3,7 +3,7 @@
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:4
 #SBATCH --time=12:00:00
-#SBATCH --mem=32G
+#SBATCH --mem=64G
 #SBATCH --cpus-per-task=8
 #SBATCH --constraint=ampere
 #SBATCH --exclude=gpu[017,018]
