@@ -9,15 +9,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, TypeGuard, cast, runtime_checkable
+from typing import TypeGuard, cast
 
 import jax
 import optax
 import orbax.checkpoint as ocp
 from flax import nnx
-from jax.sharding import Sharding
-from orbax.checkpoint import args as args_lib
-from orbax.checkpoint._src.metadata.sharding import ShardingMetadata
 
 from chex_types import Step
 from train.state import TrainState
@@ -29,23 +26,6 @@ class CheckpointConfig:
 
     every_steps: int
     max_to_keep: int
-
-
-type ShardingLike = Sharding | ShardingMetadata
-
-
-@runtime_checkable
-class _HasSharding(Protocol):
-    """Protocol for metadata leaves that expose sharding information."""
-
-    sharding: ShardingLike | None
-
-
-@runtime_checkable
-class _HasTree(Protocol):
-    """Protocol for metadata objects that wrap a tree attribute."""
-
-    tree: MetadataTree
 
 
 type PyTree = (
@@ -63,57 +43,29 @@ type PyTree = (
     | dict[str, "PyTree"]
 )
 type CheckpointTree = dict[str, PyTree]
-type MetadataLeaf = _HasSharding | None
-type MetadataTree = (
-    MetadataLeaf
-    | dict[str, "MetadataTree"]
-    | list["MetadataTree"]
-    | tuple["MetadataTree", ...]
-)
-type RestoreArgsLeaf = ocp.ArrayRestoreArgs | None
-type RestoreArgsTree = (
-    RestoreArgsLeaf
-    | dict[str, "RestoreArgsTree"]
-    | list["RestoreArgsTree"]
-    | tuple["RestoreArgsTree", ...]
-)
 
 
 def make_checkpoint_manager(
     checkpoints_dir: Path, cfg: CheckpointConfig
 ) -> ocp.CheckpointManager:
     """Create an Orbax CheckpointManager."""
-    checkpointer = ocp.PyTreeCheckpointer()
+    registry = ocp.handlers.DefaultCheckpointHandlerRegistry()
+    registry.add(
+        "default", ocp.args.StandardRestore, ocp.StandardCheckpointHandler
+    )
+    registry.add(
+        "default", ocp.args.StandardSave, ocp.StandardCheckpointHandler
+    )
     options = ocp.CheckpointManagerOptions(
         max_to_keep=cfg.max_to_keep,
         create=True,
         enable_async_checkpointing=False,
     )
-    return ocp.CheckpointManager(checkpoints_dir, checkpointer, options)
-
-
-def _restore_args_from_metadata(
-    metadata: MetadataTree | _HasTree,
-) -> RestoreArgsTree:
-    """Build a restore_args pytree from Orbax metadata.
-
-    Args:
-        metadata: TreeMetadata or a tree-like structure containing leaves
-            with optional sharding info.
-
-    Returns:
-        A pytree matching the metadata structure with ArrayRestoreArgs
-        where sharding metadata is available, otherwise None leaves.
-    """
-    # TreeMetadata stores the actual tree under a `.tree` attribute.
-    tree = metadata.tree if isinstance(metadata, _HasTree) else metadata
-
-    def _leaf_to_args(leaf: MetadataLeaf) -> RestoreArgsLeaf:
-        if isinstance(leaf, _HasSharding) and leaf.sharding is not None:
-            return ocp.ArrayRestoreArgs(sharding=leaf.sharding)
-        return None
-
-    return jax.tree_util.tree_map(_leaf_to_args, tree)
+    return ocp.CheckpointManager(
+        checkpoints_dir,
+        options=options,
+        handler_registry=registry,
+    )
 
 
 def _state_to_tree(state: TrainState) -> CheckpointTree:
@@ -206,6 +158,9 @@ def _restore_opt_state(value: PyTree) -> PyTree:
         return tuple(_restore_opt_state(item) for item in items)
     if isinstance(value, tuple):
         items = cast(tuple[PyTree, ...], value)
+        if hasattr(value, "_fields"):
+            restored = tuple(_restore_opt_state(item) for item in items)
+            return type(value)(*restored)
         return tuple(_restore_opt_state(item) for item in items)
     if isinstance(value, dict):
         value_dict = cast(dict[str, PyTree], value)
@@ -278,12 +233,16 @@ def save_checkpoint(
     state: TrainState,
 ) -> None:
     """Save TrainState via Orbax."""
-    manager.save(step=int(state.step), items=_state_to_tree(state))
+    manager.save(
+        step=int(state.step),
+        args=ocp.args.StandardSave(_state_to_tree(state)),
+    )
     manager.wait_until_finished()
 
 
 def restore_latest(
     manager: ocp.CheckpointManager,
+    target_tree: CheckpointTree,
 ) -> TrainState:
     """Restore the latest TrainState.
 
@@ -293,12 +252,7 @@ def restore_latest(
     step = manager.latest_step()
     if step is None:
         raise FileNotFoundError("No checkpoint found.")
-    # Use metadata-backed restore args to provide explicit sharding info.
-    metadata = manager.item_metadata(step)
-    restore_args = _restore_args_from_metadata(metadata)
-    restored = manager.restore(
-        step, args=args_lib.PyTreeRestore(restore_args=restore_args)
-    )
+    restored = manager.restore(step, args=ocp.args.StandardRestore(target_tree))
     if not isinstance(restored, dict):
         raise ValueError("Restored checkpoint is not a mapping.")
     return _tree_to_state(cast(CheckpointTree, restored))

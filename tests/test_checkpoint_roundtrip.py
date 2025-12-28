@@ -12,20 +12,16 @@ import optax
 import orbax.checkpoint as ocp
 import pytest
 from flax import nnx
-from orbax.checkpoint import args as args_lib
 
 from chex_types import Array, Step
 from train.checkpointing import (
     CheckpointConfig,
     CheckpointTree,
-    MetadataTree,
-    ShardingLike,
     _as_state_if_dict,
-    _HasTree,
     _is_value_dict,
     _normalize_pytree,
-    _restore_args_from_metadata,
     _restore_opt_state,
+    _state_to_tree,
     _tree_to_state,
     make_checkpoint_manager,
     restore_latest,
@@ -89,7 +85,7 @@ def test_checkpoint_roundtrip(tmp_path: Path) -> None:
     )
 
     save_checkpoint(manager, state)
-    restored = restore_latest(manager)
+    restored = restore_latest(manager, _state_to_tree(state))
 
     # All fields should roundtrip exactly.
     chex.assert_trees_all_equal(restored.params, state.params)
@@ -105,7 +101,7 @@ def test_restore_latest_missing(tmp_path: Path) -> None:
         CheckpointConfig(every_steps=1, max_to_keep=1),
     )
     with pytest.raises(FileNotFoundError):
-        _ = restore_latest(manager)
+        _ = restore_latest(manager, cast(CheckpointTree, {"step": 0}))
 
 
 def test_tree_to_state_missing_step() -> None:
@@ -207,59 +203,22 @@ def test_restore_latest_invalid_mapping() -> None:
             """Return a fixed latest step."""
             return 0
 
-        def restore(self, step: int, **_kwargs: args_lib.PyTreeRestore) -> int:
+        def restore(
+            self, step: int, **_kwargs: ocp.args.StandardRestore
+        ) -> int:
             """Return an invalid payload instead of a mapping."""
             del step
             return 123
 
-        def item_metadata(self, step: int) -> None:
-            """Return dummy metadata for restore args."""
-            del step
-            return None
-
     with pytest.raises(ValueError, match="not a mapping"):
-        _ = restore_latest(cast(ocp.CheckpointManager, DummyManager()))
+        _ = restore_latest(
+            cast(ocp.CheckpointManager, DummyManager()),
+            cast(CheckpointTree, {"step": 0}),
+        )
 
 
 def test_checkpoint_helpers_paths() -> None:
     """Helper utilities handle edge cases for pytrees and opt state."""
-
-    # Validate restore args generation from sharding metadata.
-    class FakeLeaf:
-        """Leaf container with sharding metadata."""
-
-        def __init__(self, sharding: ShardingLike | None) -> None:
-            """Store sharding metadata on the leaf.
-
-            Args:
-                sharding: Sharding metadata object.
-            """
-            self.sharding = sharding
-
-    class FakeMeta(_HasTree):
-        """Metadata wrapper holding a tree attribute."""
-
-        def __init__(self, tree: MetadataTree) -> None:
-            """Store tree metadata structure.
-
-            Args:
-                tree: Tree structure to wrap.
-            """
-            self.tree = tree
-
-    restore_args = cast(
-        dict[str, ocp.ArrayRestoreArgs | None],
-        _restore_args_from_metadata(
-            FakeMeta(
-                {
-                    "x": FakeLeaf(sharding=cast(ShardingLike, object())),
-                    "y": None,
-                }
-            )
-        ),
-    )
-    assert isinstance(restore_args["x"], ocp.ArrayRestoreArgs)
-    assert restore_args["y"] is None
 
     # Validate helper behavior for edge cases.
     assert not _is_value_dict(1)
@@ -272,3 +231,37 @@ def test_checkpoint_helpers_paths() -> None:
     fallback = _restore_opt_state({"foo": 1})
     fallback_dict = cast(dict[str, int], fallback)
     assert fallback_dict["foo"] == 1
+
+
+def test_restore_opt_state_structs() -> None:
+    """_restore_opt_state reconstructs Optax state containers."""
+    count = jnp.array(0, dtype=jnp.int32)
+    value = jnp.array([0.0], dtype=jnp.float32)
+    adam_state = _restore_opt_state(
+        {
+            "count": count,
+            "mu": {"w": {"value": value}},
+            "nu": {"w": {"value": value}},
+        }
+    )
+    assert isinstance(adam_state, optax.ScaleByAdamState)
+    schedule_state = _restore_opt_state({"count": count})
+    assert isinstance(schedule_state, optax.ScaleByScheduleState)
+    list_state = _restore_opt_state([None, None])
+    assert isinstance(list_state, tuple)
+    assert isinstance(list_state[0], optax.EmptyState)
+
+
+def test_tree_to_state_with_dict_params() -> None:
+    """_tree_to_state converts dict params into nnx.State."""
+    tree = cast(
+        CheckpointTree,
+        {
+            "step": 1,
+            "params": {"w": {"value": jnp.array([1.0], dtype=jnp.float32)}},
+            "opt_state": optax.EmptyState(),
+            "rng_key": jax.random.PRNGKey(0),
+        },
+    )
+    state = _tree_to_state(tree)
+    assert isinstance(state.params, nnx.State)
