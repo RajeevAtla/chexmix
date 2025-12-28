@@ -10,10 +10,9 @@ Constraints:
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 from typing import TypeGuard, cast
-
-import tomllib
 
 type TomlScalar = str | int | float | bool
 type TomlValue = TomlScalar | list["TomlValue"] | dict[str, "TomlValue"]
@@ -72,7 +71,9 @@ def _is_str_key_dict(value: TomlRawValue) -> TypeGuard[TomlRawTable]:
         True if the value is a dict and all keys are strings.
     """
     # Keep a narrow check to avoid leaking object-typed dicts.
-    return isinstance(value, dict) and all(isinstance(key, str) for key in value)
+    return isinstance(value, dict) and all(
+        isinstance(key, str) for key in value
+    )
 
 
 def _validate_toml_dict(raw: TomlRawTable) -> dict[str, TomlValue]:

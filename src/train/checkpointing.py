@@ -19,7 +19,7 @@ from jax.sharding import Sharding
 from orbax.checkpoint import args as args_lib
 from orbax.checkpoint._src.metadata.sharding import ShardingMetadata
 
-from chex_types import PRNGKey, Step
+from chex_types import Step
 from train.state import TrainState
 
 
@@ -45,7 +45,7 @@ class _HasSharding(Protocol):
 class _HasTree(Protocol):
     """Protocol for metadata objects that wrap a tree attribute."""
 
-    tree: "MetadataTree"
+    tree: MetadataTree
 
 
 type PyTree = (
@@ -92,7 +92,9 @@ def make_checkpoint_manager(
     return ocp.CheckpointManager(checkpoints_dir, checkpointer, options)
 
 
-def _restore_args_from_metadata(metadata: MetadataTree | _HasTree) -> RestoreArgsTree:
+def _restore_args_from_metadata(
+    metadata: MetadataTree | _HasTree,
+) -> RestoreArgsTree:
     """Build a restore_args pytree from Orbax metadata.
 
     Args:
@@ -163,9 +165,11 @@ def _normalize_pytree(value: PyTree) -> PyTree:
             return nnx.Param(leaf)
     # Recursively normalize containers.
     if isinstance(value, list):
-        return tuple(_normalize_pytree(item) for item in value)
+        items = cast(list[PyTree], value)
+        return tuple(_normalize_pytree(item) for item in items)
     if isinstance(value, dict):
-        return {key: _normalize_pytree(item) for key, item in value.items()}
+        items = cast(dict[str, PyTree], value)
+        return {key: _normalize_pytree(item) for key, item in items.items()}
     return value
 
 
@@ -198,9 +202,11 @@ def _restore_opt_state(value: PyTree) -> PyTree:
         return optax.EmptyState()
     # Recursively rebuild tuples/lists and Optax state structs.
     if isinstance(value, list):
-        return tuple(_restore_opt_state(item) for item in value)
+        items = cast(list[PyTree], value)
+        return tuple(_restore_opt_state(item) for item in items)
     if isinstance(value, tuple):
-        return tuple(_restore_opt_state(item) for item in value)
+        items = cast(tuple[PyTree, ...], value)
+        return tuple(_restore_opt_state(item) for item in items)
     if isinstance(value, dict):
         value_dict = cast(dict[str, PyTree], value)
         if set(value_dict.keys()) == {"count", "mu", "nu"}:

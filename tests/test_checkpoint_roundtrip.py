@@ -18,7 +18,10 @@ from chex_types import Array, Step
 from train.checkpointing import (
     CheckpointConfig,
     CheckpointTree,
+    MetadataTree,
+    ShardingLike,
     _as_state_if_dict,
+    _HasTree,
     _is_value_dict,
     _normalize_pytree,
     _restore_args_from_metadata,
@@ -27,7 +30,6 @@ from train.checkpointing import (
     make_checkpoint_manager,
     restore_latest,
     save_checkpoint,
-    ShardingLike,
 )
 from train.optimizer import OptimConfig, make_optimizer
 from train.state import TrainState
@@ -234,10 +236,10 @@ def test_checkpoint_helpers_paths() -> None:
             """
             self.sharding = sharding
 
-    class FakeMeta:
+    class FakeMeta(_HasTree):
         """Metadata wrapper holding a tree attribute."""
 
-        def __init__(self, tree: dict[str, FakeLeaf | None]) -> None:
+        def __init__(self, tree: MetadataTree) -> None:
             """Store tree metadata structure.
 
             Args:
@@ -248,7 +250,12 @@ def test_checkpoint_helpers_paths() -> None:
     restore_args = cast(
         dict[str, ocp.ArrayRestoreArgs | None],
         _restore_args_from_metadata(
-            FakeMeta({"x": FakeLeaf(sharding=cast(ShardingLike, object())), "y": None})
+            FakeMeta(
+                {
+                    "x": FakeLeaf(sharding=cast(ShardingLike, object())),
+                    "y": None,
+                }
+            )
         ),
     )
     assert isinstance(restore_args["x"], ocp.ArrayRestoreArgs)

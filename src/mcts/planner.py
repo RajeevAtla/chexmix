@@ -85,6 +85,7 @@ def run_mcts(
     Returns:
         MctsOutput with sampled/selected action and action_weights distribution.
     """
+
     def _run_mcts_batched(
         batched_state: pgx.State, batched_key: PRNGKey
     ) -> MctsOutput:

@@ -33,13 +33,13 @@ from cli import (
     build_parser,
     main,
 )
+from mcts.planner import MctsConfig
 from paths import RunPaths
 from selfplay.rollout import SelfPlayConfig
 from selfplay.trajectory import Trajectory
 from toml_io import TomlValue, load_toml, save_toml
 from train.losses import LossConfig, Losses
 from train.state import TrainState
-from mcts.planner import MctsConfig
 
 
 def _minimal_train_config() -> dict[str, TomlValue]:

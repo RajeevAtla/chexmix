@@ -7,6 +7,7 @@ Use dataclass(frozen=True) and return new instances to keep functional style.
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 import jax
 import optax
 from flax import nnx

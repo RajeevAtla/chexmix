@@ -8,6 +8,8 @@ from typing import cast
 import pytest
 
 from toml_io import (
+    TomlRawTable,
+    TomlRawValue,
     TomlValue,
     _validate_toml_dict,
     dump_toml,
@@ -52,11 +54,14 @@ def test_validate_rejects_unsupported_types() -> None:
     """_validate_toml_dict rejects unsupported types."""
     # Object values should be rejected.
     with pytest.raises(ValueError):
-        _validate_toml_dict({"bad": object()})
+        bad = cast(TomlRawTable, {"bad": cast(TomlRawValue, object())})
+        _validate_toml_dict(bad)
 
     # Dicts inside lists should be rejected.
     with pytest.raises(ValueError):
-        _validate_toml_dict({"bad": [1, {"nested": 2}]})
+        bad_list = cast(TomlRawValue, [1, {"nested": 2}])
+        bad = cast(TomlRawTable, {"bad": bad_list})
+        _validate_toml_dict(bad)
 
 
 def test_load_toml_rejects_non_string_keys(
