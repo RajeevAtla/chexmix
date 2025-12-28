@@ -42,6 +42,22 @@ from train.losses import LossConfig, Losses
 from train.state import TrainState
 
 
+class _DummyCheckpointManager:
+    """Minimal checkpoint manager stub for CLI tests."""
+
+    def latest_step(self) -> int | None:
+        """Return None to indicate no checkpoint is present."""
+        return None
+
+
+class _ResumeCheckpointManager:
+    """Checkpoint manager stub that signals a resume is available."""
+
+    def latest_step(self) -> int | None:
+        """Return a fake latest step to trigger restore."""
+        return 0
+
+
 def _minimal_train_config() -> dict[str, TomlValue]:
     """Return a minimal config dict for fast training tests.
 
@@ -180,7 +196,9 @@ def test_main_train_writes_artifacts(
     # Stub out heavy training dependencies.
     monkeypatch.setattr("cli.generate_selfplay_trajectories", _fake_selfplay)
     monkeypatch.setattr("cli.train_step", _fake_train_step)
-    monkeypatch.setattr("cli.make_checkpoint_manager", lambda *_: object())
+    monkeypatch.setattr(
+        "cli.make_checkpoint_manager", lambda *_: _DummyCheckpointManager()
+    )
     monkeypatch.setattr("cli.save_checkpoint", lambda *_: None)
     config_path = tmp_path / "config.toml"
     save_toml(config_path, _minimal_train_config())
@@ -313,7 +331,9 @@ def test_train_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("cli.generate_selfplay_trajectories", _fake_selfplay)
     monkeypatch.setattr("cli.train_step", _fake_train_step)
-    monkeypatch.setattr("cli.make_checkpoint_manager", lambda *_: object())
+    monkeypatch.setattr(
+        "cli.make_checkpoint_manager", lambda *_: _DummyCheckpointManager()
+    )
     monkeypatch.setattr("cli.save_checkpoint", lambda *_: None)
     config = _minimal_train_config()
     paths = RunPaths.create("run")
@@ -323,12 +343,40 @@ def test_train_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert paths.games_dir.exists()
 
 
+def test_train_resume_uses_restore(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Training resumes from checkpoint when manager reports latest step."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("cli.generate_selfplay_trajectories", _fake_selfplay)
+    monkeypatch.setattr("cli.train_step", _fake_train_step)
+    monkeypatch.setattr(
+        "cli.make_checkpoint_manager", lambda *_: _ResumeCheckpointManager()
+    )
+    monkeypatch.setattr("cli.save_checkpoint", lambda *_: None)
+
+    called = {"restore": False}
+
+    def _restore_latest(manager, state):
+        del manager
+        called["restore"] = True
+        return state
+
+    monkeypatch.setattr("cli.restore_latest", _restore_latest)
+    config = _minimal_train_config()
+    paths = RunPaths.create("run")
+    _train(config, paths, "run")
+    assert called["restore"]
+
+
 def test_train_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Training stops early when runtime limit is hit."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("cli.generate_selfplay_trajectories", _fake_selfplay)
     monkeypatch.setattr("cli.train_step", _fake_train_step)
-    monkeypatch.setattr("cli.make_checkpoint_manager", lambda *_: object())
+    monkeypatch.setattr(
+        "cli.make_checkpoint_manager", lambda *_: _DummyCheckpointManager()
+    )
     monkeypatch.setattr("cli.save_checkpoint", lambda *_: None)
     config = _minimal_train_config()
     run_table = _get_table(config, "run")

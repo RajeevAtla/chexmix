@@ -36,6 +36,7 @@ from toml_io import TomlValue, load_toml, save_toml
 from train.checkpointing import (
     CheckpointConfig,
     make_checkpoint_manager,
+    restore_latest,
     save_checkpoint,
 )
 from train.learner import TrainConfig, train_step
@@ -511,6 +512,9 @@ def _train(config: dict[str, TomlValue], paths: RunPaths, run_id: str) -> None:
             max_to_keep=3,
         ),
     )
+    # Resume from latest checkpoint if available.
+    if manager.latest_step() is not None:
+        state = restore_latest(manager, state)
 
     # Define pmapped functions for self-play and training.
     def _selfplay_fn(rng_key: PRNGKey, params: nnx.State):
