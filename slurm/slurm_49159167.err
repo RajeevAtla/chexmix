@@ -1,0 +1,7 @@
+/var/lib/slurm/slurmd/job49159167/slurm_script: line 19: module: command not found
+/var/lib/slurm/slurmd/job49159167/slurm_script: line 20: module: command not found
+/var/lib/slurm/slurmd/job49159167/slurm_script: line 21: module: command not found
+/var/lib/slurm/slurmd/job49159167/slurm_script: line 22: module: command not found
+/var/lib/slurm/slurmd/job49159167/slurm_script: line 25: apptainer: command not found
+/var/lib/slurm/slurmd/job49159167/slurm_script: line 33: git: command not found
+/var/lib/slurm/slurmd/job49159167/slurm_script: line 46: apptainer: command not found
