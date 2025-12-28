@@ -52,6 +52,7 @@ apptainer exec --nv "${JAX_IMAGE}" bash -c '
   source $HOME/.local/bin/env
   echo "uv installed!"
   uv --version
+  uv run python --version
   
   # sync dependencies
   uv sync --group cuda
