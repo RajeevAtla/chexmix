@@ -4,6 +4,7 @@
 [![ruff](https://github.com/RajeevAtla/chexmix/actions/workflows/ruff.yml/badge.svg)](https://github.com/RajeevAtla/chexmix/actions/workflows/ruff.yml)
 [![ty](https://github.com/RajeevAtla/chexmix/actions/workflows/ty.yml/badge.svg)](https://github.com/RajeevAtla/chexmix/actions/workflows/ty.yml)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![ty](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json)](https://github.com/astral-sh/ty)
 
 JAX/Flax-NNX + PGX + MCTS (mctx) self-play chess.
 
