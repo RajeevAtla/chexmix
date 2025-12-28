@@ -7,6 +7,7 @@ from typing import cast
 import chex
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pgx
 import pytest
 from flax import nnx
@@ -154,6 +155,7 @@ def test_replay_buffer_sample() -> None:
     buffer = ReplayBuffer(ReplayConfig(capacity=4, min_to_sample=1))
     buffer.add(traj)
     assert buffer.can_sample()
+    assert isinstance(buffer._obs, np.ndarray)
     batch = buffer.sample_batch(jax.random.PRNGKey(0), batch_size=1)
 
     assert batch["obs"].shape == (1, 8, 8, 119)
@@ -234,9 +236,9 @@ def test_replay_buffer_wrap_and_capacity() -> None:
 def test_replay_buffer_insert_uninitialized() -> None:
     """ReplayBuffer insert rejects uninitialized storage."""
     buffer = ReplayBuffer(ReplayConfig(capacity=2, min_to_sample=1))
-    obs = jnp.zeros((1, 8, 8, 119), dtype=jnp.float32)
-    policy = jnp.zeros((1, 4672), dtype=jnp.float32)
-    outcome = jnp.zeros((1,), dtype=jnp.float32)
+    obs = np.zeros((1, 8, 8, 119), dtype=np.float32)
+    policy = np.zeros((1, 4672), dtype=np.float32)
+    outcome = np.zeros((1,), dtype=np.float32)
     with pytest.raises(ValueError, match="storage not initialized"):
         buffer._insert(obs, policy, outcome, count=1)
 

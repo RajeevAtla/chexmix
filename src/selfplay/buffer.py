@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from chex_types import Array, PRNGKey
 from selfplay.trajectory import Trajectory
@@ -36,9 +37,9 @@ class ReplayBuffer:
         self._min_to_sample = cfg.min_to_sample
         self._size = 0
         self._write_idx = 0
-        self._obs: Array | None = None
-        self._policy: Array | None = None
-        self._outcome: Array | None = None
+        self._obs: np.ndarray | None = None
+        self._policy: np.ndarray | None = None
+        self._outcome: np.ndarray | None = None
 
     def add(self, traj: Trajectory) -> None:
         """Insert a batch of trajectories into the buffer."""
@@ -51,14 +52,14 @@ class ReplayBuffer:
         valid_flat = jnp.reshape(traj.valid, (-1,))
 
         # Pull validity to host for filtering.
-        valid_np = jax.device_get(valid_flat).astype(bool)
+        valid_np = np.asarray(jax.device_get(valid_flat)).astype(bool)
         if not valid_np.any():
             return
 
         # Keep only valid entries and truncate to capacity.
-        obs_np = jax.device_get(obs_flat)[valid_np]
-        policy_np = jax.device_get(policy_flat)[valid_np]
-        outcome_np = jax.device_get(outcome_flat)[valid_np]
+        obs_np = np.asarray(jax.device_get(obs_flat))[valid_np]
+        policy_np = np.asarray(jax.device_get(policy_flat))[valid_np]
+        outcome_np = np.asarray(jax.device_get(outcome_flat))[valid_np]
         count = int(obs_np.shape[0])
         if count >= self._capacity:
             obs_np = obs_np[-self._capacity :]
@@ -70,13 +71,13 @@ class ReplayBuffer:
 
         # Lazily initialize storage on first insert.
         if self._obs is None:
-            self._obs = jnp.zeros(
+            self._obs = np.zeros(
                 (self._capacity, *obs_np.shape[1:]), dtype=obs_np.dtype
             )
-            self._policy = jnp.zeros(
+            self._policy = np.zeros(
                 (self._capacity, *policy_np.shape[1:]), dtype=policy_np.dtype
             )
-            self._outcome = jnp.zeros((self._capacity,), dtype=outcome_np.dtype)
+            self._outcome = np.zeros((self._capacity,), dtype=outcome_np.dtype)
 
         # Insert into ring buffer and update pointers.
         self._insert(obs_np, policy_np, outcome_np, count)
@@ -108,7 +109,7 @@ class ReplayBuffer:
 
         # Sample indices deterministically from RNG key.
         indices = jax.random.randint(rng_key, (batch_size,), 0, self._size)
-        indices_np = jax.device_get(indices)
+        indices_np = np.asarray(jax.device_get(indices))
 
         # Gather samples into contiguous arrays.
         obs = jnp.asarray(self._obs[indices_np])
@@ -125,9 +126,9 @@ class ReplayBuffer:
 
     def _insert(
         self,
-        obs_np: Array,
-        policy_np: Array,
-        outcome_np: Array,
+        obs_np: np.ndarray,
+        policy_np: np.ndarray,
+        outcome_np: np.ndarray,
         count: int,
     ) -> None:
         """Insert numpy data into the ring buffer."""
@@ -139,17 +140,15 @@ class ReplayBuffer:
         first = min(self._capacity - self._write_idx, count)
         second = count - first
 
-        self._obs = self._obs.at[self._write_idx : self._write_idx + first].set(
-            obs_np[:first]
-        )
-        self._policy = self._policy.at[
-            self._write_idx : self._write_idx + first
-        ].set(policy_np[:first])
-        self._outcome = self._outcome.at[
-            self._write_idx : self._write_idx + first
-        ].set(outcome_np[:first])
+        self._obs[self._write_idx : self._write_idx + first] = obs_np[:first]
+        self._policy[self._write_idx : self._write_idx + first] = policy_np[
+            :first
+        ]
+        self._outcome[self._write_idx : self._write_idx + first] = outcome_np[
+            :first
+        ]
 
         if second > 0:
-            self._obs = self._obs.at[:second].set(obs_np[first:])
-            self._policy = self._policy.at[:second].set(policy_np[first:])
-            self._outcome = self._outcome.at[:second].set(outcome_np[first:])
+            self._obs[:second] = obs_np[first:]
+            self._policy[:second] = policy_np[first:]
+            self._outcome[:second] = outcome_np[first:]
