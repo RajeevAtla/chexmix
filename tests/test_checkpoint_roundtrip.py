@@ -12,6 +12,7 @@ import optax
 import orbax.checkpoint as ocp
 import pytest
 from flax import nnx
+from orbax.checkpoint import args as args_lib
 
 from chex_types import Array, Step
 from train.checkpointing import (
@@ -26,6 +27,7 @@ from train.checkpointing import (
     make_checkpoint_manager,
     restore_latest,
     save_checkpoint,
+    ShardingLike,
 )
 from train.optimizer import OptimConfig, make_optimizer
 from train.state import TrainState
@@ -203,12 +205,12 @@ def test_restore_latest_invalid_mapping() -> None:
             """Return a fixed latest step."""
             return 0
 
-        def restore(self, step: int, **_kwargs: object) -> int:
+        def restore(self, step: int, **_kwargs: args_lib.PyTreeRestore) -> int:
             """Return an invalid payload instead of a mapping."""
             del step
             return 123
 
-        def item_metadata(self, step: int) -> object:
+        def item_metadata(self, step: int) -> None:
             """Return dummy metadata for restore args."""
             del step
             return None
@@ -224,7 +226,7 @@ def test_checkpoint_helpers_paths() -> None:
     class FakeLeaf:
         """Leaf container with sharding metadata."""
 
-        def __init__(self, sharding: object) -> None:
+        def __init__(self, sharding: ShardingLike | None) -> None:
             """Store sharding metadata on the leaf.
 
             Args:
@@ -235,7 +237,7 @@ def test_checkpoint_helpers_paths() -> None:
     class FakeMeta:
         """Metadata wrapper holding a tree attribute."""
 
-        def __init__(self, tree: object) -> None:
+        def __init__(self, tree: dict[str, FakeLeaf | None]) -> None:
             """Store tree metadata structure.
 
             Args:
@@ -244,9 +246,9 @@ def test_checkpoint_helpers_paths() -> None:
             self.tree = tree
 
     restore_args = cast(
-        dict[str, object],
+        dict[str, ocp.ArrayRestoreArgs | None],
         _restore_args_from_metadata(
-            FakeMeta({"x": FakeLeaf(sharding=object()), "y": None})
+            FakeMeta({"x": FakeLeaf(sharding=cast(ShardingLike, object())), "y": None})
         ),
     )
     assert isinstance(restore_args["x"], ocp.ArrayRestoreArgs)

@@ -7,8 +7,6 @@ Use dataclass(frozen=True) and return new instances to keep functional style.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
-
 import jax
 import optax
 from flax import nnx
@@ -26,7 +24,9 @@ class TrainState:
     opt_state: optax.OptState
     rng_key: PRNGKey
 
-    def tree_flatten(self) -> tuple[tuple[object, ...], int]:
+    def tree_flatten(
+        self,
+    ) -> tuple[tuple[nnx.State, optax.OptState, PRNGKey], int]:
         """Flatten TrainState for JAX pytree registration.
 
         Returns:
@@ -39,7 +39,9 @@ class TrainState:
 
     @classmethod
     def tree_unflatten(
-        cls, aux_data: int, children: tuple[object, ...]
+        cls,
+        aux_data: int,
+        children: tuple[nnx.State, optax.OptState, PRNGKey],
     ) -> TrainState:
         """Reconstruct TrainState from pytree children.
 
@@ -55,11 +57,10 @@ class TrainState:
         """
         if not isinstance(aux_data, int):
             raise TypeError("Invalid step type in TrainState pytree.")
-        # Cast children into the expected types.
         params, opt_state, rng_key = children
         return cls(
             step=Step(aux_data),
-            params=cast(nnx.State, params),
-            opt_state=cast(optax.OptState, opt_state),
-            rng_key=cast(PRNGKey, rng_key),
+            params=params,
+            opt_state=opt_state,
+            rng_key=rng_key,
         )

@@ -31,7 +31,6 @@ class CheckpointConfig:
     max_to_keep: int
 
 
-type CheckpointTree = dict[str, nnx.State | optax.OptState | PRNGKey | int]
 type ShardingLike = Sharding | ShardingMetadata
 
 
@@ -40,6 +39,44 @@ class _HasSharding(Protocol):
     """Protocol for metadata leaves that expose sharding information."""
 
     sharding: ShardingLike | None
+
+
+@runtime_checkable
+class _HasTree(Protocol):
+    """Protocol for metadata objects that wrap a tree attribute."""
+
+    tree: "MetadataTree"
+
+
+type PyTree = (
+    jax.Array
+    | nnx.Param
+    | nnx.State
+    | optax.OptState
+    | int
+    | float
+    | bool
+    | str
+    | None
+    | tuple["PyTree", ...]
+    | list["PyTree"]
+    | dict[str, "PyTree"]
+)
+type CheckpointTree = dict[str, PyTree]
+type MetadataLeaf = _HasSharding | None
+type MetadataTree = (
+    MetadataLeaf
+    | dict[str, "MetadataTree"]
+    | list["MetadataTree"]
+    | tuple["MetadataTree", ...]
+)
+type RestoreArgsLeaf = ocp.ArrayRestoreArgs | None
+type RestoreArgsTree = (
+    RestoreArgsLeaf
+    | dict[str, "RestoreArgsTree"]
+    | list["RestoreArgsTree"]
+    | tuple["RestoreArgsTree", ...]
+)
 
 
 def make_checkpoint_manager(
@@ -55,7 +92,7 @@ def make_checkpoint_manager(
     return ocp.CheckpointManager(checkpoints_dir, checkpointer, options)
 
 
-def _restore_args_from_metadata(metadata: object) -> object:
+def _restore_args_from_metadata(metadata: MetadataTree | _HasTree) -> RestoreArgsTree:
     """Build a restore_args pytree from Orbax metadata.
 
     Args:
@@ -67,9 +104,9 @@ def _restore_args_from_metadata(metadata: object) -> object:
         where sharding metadata is available, otherwise None leaves.
     """
     # TreeMetadata stores the actual tree under a `.tree` attribute.
-    tree = getattr(metadata, "tree", metadata)
+    tree = metadata.tree if isinstance(metadata, _HasTree) else metadata
 
-    def _leaf_to_args(leaf: object) -> object:
+    def _leaf_to_args(leaf: MetadataLeaf) -> RestoreArgsLeaf:
         if isinstance(leaf, _HasSharding) and leaf.sharding is not None:
             return ocp.ArrayRestoreArgs(sharding=leaf.sharding)
         return None
@@ -95,7 +132,7 @@ def _state_to_tree(state: TrainState) -> CheckpointTree:
     }
 
 
-def _is_value_dict(value: object) -> TypeGuard[dict[str, object]]:
+def _is_value_dict(value: PyTree) -> TypeGuard[dict[str, PyTree]]:
     """Check for a serialized nnx.Param wrapper dict.
 
     Args:
@@ -109,7 +146,7 @@ def _is_value_dict(value: object) -> TypeGuard[dict[str, object]]:
     return set(value.keys()) == {"value"}
 
 
-def _normalize_pytree(value: object) -> object:
+def _normalize_pytree(value: PyTree) -> PyTree:
     """Normalize a pytree to restore nnx.Param leaves.
 
     Args:
@@ -120,7 +157,7 @@ def _normalize_pytree(value: object) -> object:
     """
     # Re-wrap serialized Params so NNX has the correct leaf types.
     if _is_value_dict(value):
-        value_dict = cast(dict[str, object], value)
+        value_dict = cast(dict[str, PyTree], value)
         leaf = value_dict["value"]
         if isinstance(leaf, jax.Array):
             return nnx.Param(leaf)
@@ -132,7 +169,7 @@ def _normalize_pytree(value: object) -> object:
     return value
 
 
-def _as_state_if_dict(value: object) -> object:
+def _as_state_if_dict(value: PyTree) -> PyTree:
     """Convert dicts to nnx.State for optimizer state restoration.
 
     Args:
@@ -147,7 +184,7 @@ def _as_state_if_dict(value: object) -> object:
     return value
 
 
-def _restore_opt_state(value: object) -> object:
+def _restore_opt_state(value: PyTree) -> PyTree:
     """Restore Optax optimizer state from a serialized structure.
 
     Args:
@@ -165,7 +202,7 @@ def _restore_opt_state(value: object) -> object:
     if isinstance(value, tuple):
         return tuple(_restore_opt_state(item) for item in value)
     if isinstance(value, dict):
-        value_dict = cast(dict[str, object], value)
+        value_dict = cast(dict[str, PyTree], value)
         if set(value_dict.keys()) == {"count", "mu", "nu"}:
             mu = _as_state_if_dict(_normalize_pytree(value_dict["mu"]))
             nu = _as_state_if_dict(_normalize_pytree(value_dict["nu"]))

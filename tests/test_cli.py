@@ -6,7 +6,10 @@ from pathlib import Path
 
 import jax
 import jax.numpy as jnp
+import optax
+import pgx
 import pytest
+from flax import nnx
 
 from cli import (
     _append_event,
@@ -34,8 +37,9 @@ from paths import RunPaths
 from selfplay.rollout import SelfPlayConfig
 from selfplay.trajectory import Trajectory
 from toml_io import TomlValue, load_toml, save_toml
-from train.losses import Losses
+from train.losses import LossConfig, Losses
 from train.state import TrainState
+from mcts.planner import MctsConfig
 
 
 def _minimal_train_config() -> dict[str, TomlValue]:
@@ -82,12 +86,12 @@ def _minimal_train_config() -> dict[str, TomlValue]:
 
 def _fake_selfplay(
     *,
-    env: object,
-    model: object,
-    params: object,
+    env: pgx.Env,
+    model: nnx.Module,
+    params: nnx.State,
     rng_key: jax.Array,
     selfplay_cfg: SelfPlayConfig,
-    mcts_cfg: object,
+    mcts_cfg: MctsConfig,
 ) -> Trajectory:
     """Generate a deterministic dummy trajectory for training tests.
 
@@ -123,11 +127,11 @@ def _fake_selfplay(
 
 def _fake_train_step(
     *,
-    model: object,
-    tx: object,
+    model: nnx.Module,
+    tx: optax.GradientTransformation,
     state: TrainState,
     batch: dict[str, jax.Array],
-    loss_cfg: object,
+    loss_cfg: LossConfig,
 ) -> tuple[TrainState, Losses]:
     """Return a no-op TrainState and zero losses.
 

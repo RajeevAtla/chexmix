@@ -10,12 +10,17 @@ Constraints:
 
 from __future__ import annotations
 
-import tomllib
 from pathlib import Path
 from typing import TypeGuard, cast
 
+import tomllib
+
 type TomlScalar = str | int | float | bool
 type TomlValue = TomlScalar | list["TomlValue"] | dict[str, "TomlValue"]
+type TomlRawValue = (
+    str | int | float | bool | list["TomlRawValue"] | dict[str, "TomlRawValue"]
+)
+type TomlRawTable = dict[str, TomlRawValue]
 
 
 def load_toml(path: Path) -> dict[str, TomlValue]:
@@ -31,7 +36,7 @@ def load_toml(path: Path) -> dict[str, TomlValue]:
         FileNotFoundError: If path does not exist.
         ValueError: If parsed content contains unsupported types.
     """
-    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    data = cast(TomlRawTable, tomllib.loads(path.read_text(encoding="utf-8")))
     if not _is_str_key_dict(data):
         raise ValueError("TOML root must be a table with string keys.")
     return _validate_toml_dict(data)
@@ -57,28 +62,26 @@ def save_toml(path: Path, data: dict[str, TomlValue]) -> None:
     path.write_text(dump_toml(data), encoding="utf-8")
 
 
-def _is_str_key_dict(value: object) -> TypeGuard[dict[str, object]]:
+def _is_str_key_dict(value: TomlRawValue) -> TypeGuard[TomlRawTable]:
     """Check whether a value is a dict with string keys.
 
     Args:
-        value: Candidate object.
+        value: Candidate value.
 
     Returns:
         True if the value is a dict and all keys are strings.
     """
     # Keep a narrow check to avoid leaking object-typed dicts.
-    if not isinstance(value, dict):
-        return False
-    return all(isinstance(key, str) for key in value)
+    return isinstance(value, dict) and all(isinstance(key, str) for key in value)
 
 
-def _validate_toml_dict(raw: dict[str, object]) -> dict[str, TomlValue]:
+def _validate_toml_dict(raw: TomlRawTable) -> dict[str, TomlValue]:
     """Validate TOML data without leaking `object` to callers."""
     validated: dict[str, TomlValue] = {}
     # Validate nested tables and scalars recursively.
     for key, value in raw.items():
         if _is_str_key_dict(value):
-            nested = _validate_toml_dict(cast(dict[str, object], value))
+            nested = _validate_toml_dict(cast(TomlRawTable, value))
             validated[key] = nested
             continue
 
@@ -86,7 +89,7 @@ def _validate_toml_dict(raw: dict[str, object]) -> dict[str, TomlValue]:
     return validated
 
 
-def _validate_toml_value(value: object) -> TomlValue:
+def _validate_toml_value(value: TomlRawValue) -> TomlValue:
     """Validate a TOML value against allowed types.
 
     Args:

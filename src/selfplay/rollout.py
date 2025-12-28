@@ -83,11 +83,12 @@ def generate_selfplay_trajectories(
 
         # Derive step-specific key and run MCTS.
         step_key = jax.random.fold_in(rng_key, step_idx)
+        game_keys = jax.random.split(step_key, batch_size)
         mcts_out: MctsOutput = run_mcts(
             env=env,
             model=model,
             params=params,
-            rng_key=step_key,
+            rng_key=game_keys,
             state=carry,
             cfg=mcts_cfg,
         )
