@@ -1,0 +1,57 @@
+INFO:    underlay of /usr/bin/nvidia-persistenced required more than 50 (479) bind mounts
+15:4: not a valid test operator:  
+15:4: not a valid test operator: 13.0
+21:4: not a valid test operator: (
+21:4: not a valid test operator: 535.154.05
+downloading uv 0.9.18 x86_64-unknown-linux-gnu
+Resolved 62 packages in 1ms
+Audited 60 packages in 129ms
+W1228 17:11:46.300349   21296 bfc_allocator.cc:502] Allocator (GPU_0_bfc) ran out of memory trying to allocate 5.67GiB (rounded to 6092800000)requested by op 
+If the cause is memory fragmentation maybe the environment variable 'TF_GPU_ALLOCATOR=cuda_malloc_async' will improve the situation. 
+Current allocation summary follows.
+Current allocation summary follows.
+W1228 17:11:46.301953   21296 bfc_allocator.cc:513] ***********************************************************************************_________________
+E1228 17:11:46.302020   21296 pjrt_stream_executor_client.cc:2091] Execution of replica 0 failed: RESOURCE_EXHAUSTED: Out of memory while trying to allocate 5.67GiB. [tf-allocator-allocation-error='']
+Traceback (most recent call last):
+  File "/scratch/rra80/chexmix/__main__.py", line 27, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/scratch/rra80/chexmix/__main__.py", line 23, in main
+    return cli.main()
+           ~~~~~~~~^^
+  File "/scratch/rra80/chexmix/src/cli.py", line 672, in main
+    _train(config, paths, run_id)
+    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/rra80/chexmix/src/cli.py", line 574, in _train
+    replay.add(_combine_traj(traj))
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/rra80/chexmix/src/selfplay/buffer.py", line 82, in add
+    self._insert(obs_np, policy_np, outcome_np, count)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/rra80/chexmix/src/selfplay/buffer.py", line 142, in _insert
+    self._obs = self._obs.at[self._write_idx : self._write_idx + first].set(
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        obs_np[:first]
+        ^^^^^^^^^^^^^^
+    )
+    ^
+  File "/scratch/rra80/chexmix/.venv/lib/python3.13/site-packages/jax/_src/numpy/array_methods.py", line 859, in set
+    return scatter._scatter_update(
+           ~~~~~~~~~~~~~~~~~~~~~~~^
+        self.array, self.index, values, lax_slicing.scatter,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        indices_are_sorted=indices_are_sorted, unique_indices=unique_indices,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        mode=mode, out_sharding=out_sharding,  # type: ignore
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        normalize_indices=wrap_negative_indices)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/rra80/chexmix/.venv/lib/python3.13/site-packages/jax/_src/ops/scatter.py", line 88, in _scatter_update
+    return internal_scatter(x, y, tuple(dynamic_idx))
+  File "/scratch/rra80/chexmix/.venv/lib/python3.13/site-packages/jax/_src/ops/scatter.py", line 125, in _scatter_impl
+    y = jnp.squeeze(y, axis=indexer.newaxis_dims)
+  File "/scratch/rra80/chexmix/.venv/lib/python3.13/site-packages/jax/_src/numpy/lax_numpy.py", line 2304, in squeeze
+    return _squeeze(arr, _ensure_index_tuple(axis) if axis is not None else None)
+jax.errors.JaxRuntimeError: RESOURCE_EXHAUSTED: Out of memory while trying to allocate 5.67GiB.
+--------------------
+For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
