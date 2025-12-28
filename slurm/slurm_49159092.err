@@ -1,0 +1,161 @@
+INFO:    Using cached SIF image
+INFO:    underlay of /usr/bin/nvidia-smi required more than 50 (479) bind mounts
+15:4: not a valid test operator:  
+15:4: not a valid test operator: 13.0
+21:4: not a valid test operator: (
+21:4: not a valid test operator: 535.154.05
+downloading uv 0.9.18 x86_64-unknown-linux-gnu
+Using CPython 3.14.0
+Creating virtual environment at: .venv
+Resolved 62 packages in 3ms
+Downloading numpy (15.6MiB)
+Downloading ruff (9.7MiB)
+Downloading nvidia-cuda-nvcc (40.3MiB)
+Downloading nvidia-cudnn-cu13 (341.7MiB)
+Downloading ml-dtypes (4.8MiB)
+Downloading tensorstore (20.0MiB)
+Downloading nvidia-cuda-runtime (2.2MiB)
+Downloading jax-cuda13-plugin (5.4MiB)
+Downloading nvidia-cuda-nvrtc (44.4MiB)
+Downloading ty (9.7MiB)
+Downloading nvidia-cusparse (144.9MiB)
+Downloading jax-cuda13-pjrt (105.6MiB)
+Downloading nvidia-cuda-cupti (10.8MiB)
+Downloading nvidia-nvvm (60.5MiB)
+Downloading nvidia-cufft (215.6MiB)
+Downloading nvidia-nccl-cu13 (187.4MiB)
+Downloading scipy (34.1MiB)
+Downloading nvidia-cublas (402.9MiB)
+Downloading jax (2.8MiB)
+Downloading jaxlib (76.4MiB)
+Downloading nvidia-nvjitlink (39.0MiB)
+Downloading nvidia-cusolver (192.6MiB)
+ Downloaded nvidia-cuda-runtime
+ Downloaded ml-dtypes
+ Downloaded jax-cuda13-plugin
+ Downloaded jax
+ Downloaded ruff
+ Downloaded ty
+ Downloaded nvidia-cuda-cupti
+ Downloaded numpy
+ Downloaded tensorstore
+ Downloaded scipy
+ Downloaded nvidia-nvjitlink
+ Downloaded nvidia-cuda-nvcc
+ Downloaded nvidia-cuda-nvrtc
+ Downloaded nvidia-nvvm
+ Downloaded jaxlib
+ Downloaded jax-cuda13-pjrt
+ Downloaded nvidia-cusparse
+ Downloaded nvidia-nccl-cu13
+ Downloaded nvidia-cusolver
+ Downloaded nvidia-cufft
+ Downloaded nvidia-cudnn-cu13
+ Downloaded nvidia-cublas
+Prepared 37 packages in 19.81s
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 60 packages in 7.53s
+ + absl-py==2.3.1
+ + aiofiles==25.1.0
+ + chex==0.1.91
+ + coverage==7.13.0
+ + etils==1.13.0
+ + execnet==2.1.2
+ + flax==0.12.2
+ + fsspec==2025.12.0
+ + humanize==4.15.0
+ + importlib-resources==6.5.2
+ + iniconfig==2.3.0
+ + jax==0.8.2
+ + jax-cuda13-pjrt==0.8.2
+ + jax-cuda13-plugin==0.8.2
+ + jaxlib==0.8.2
+ + markdown-it-py==4.0.0
+ + mctx==0.0.6
+ + mdurl==0.1.2
+ + ml-dtypes==0.5.4
+ + msgpack==1.1.2
+ + nest-asyncio==1.6.0
+ + numpy==2.4.0
+ + nvidia-cublas==13.2.0.9
+ + nvidia-cuda-crt==13.1.80
+ + nvidia-cuda-cupti==13.1.75
+ + nvidia-cuda-nvcc==13.1.80
+ + nvidia-cuda-nvrtc==13.1.80
+ + nvidia-cuda-runtime==13.1.80
+ + nvidia-cudnn-cu13==9.17.1.4
+ + nvidia-cufft==12.1.0.31
+ + nvidia-cusolver==12.0.7.41
+ + nvidia-cusparse==12.7.2.19
+ + nvidia-nccl-cu13==2.28.9
+ + nvidia-nvjitlink==13.1.80
+ + nvidia-nvshmem-cu13==3.4.5
+ + nvidia-nvvm==13.1.80
+ + opt-einsum==3.4.0
+ + optax==0.2.6
+ + orbax-checkpoint==0.11.31
+ + packaging==25.0
+ + pgx==2.6.0
+ + pluggy==1.6.0
+ + protobuf==6.33.2
+ + psutil==7.1.3
+ + pygments==2.19.2
+ + pytest==9.0.2
+ + pytest-cov==7.0.0
+ + pytest-xdist==3.8.0
+ + pyyaml==6.0.3
+ + rich==14.2.0
+ + ruff==0.6.0
+ + scipy==1.16.3
+ + simplejson==3.20.2
+ + svgwrite==1.4.3
+ + tensorstore==0.1.80
+ + toolz==1.1.0
+ + treescope==0.1.10
+ + ty==0.0.5
+ + typing-extensions==4.15.0
+ + zipp==3.23.0
+Traceback (most recent call last):
+  File "/scratch/rra80/chexmix/__main__.py", line 27, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/scratch/rra80/chexmix/__main__.py", line 21, in main
+    import cli
+  File "/scratch/rra80/chexmix/src/cli.py", line 20, in <module>
+    from flax import nnx
+  File "/scratch/rra80/chexmix/.venv/lib/python3.14/site-packages/flax/__init__.py", line 26, in <module>
+    from flax import linen
+  File "/scratch/rra80/chexmix/.venv/lib/python3.14/site-packages/flax/linen/__init__.py", line 39, in <module>
+    from .activation import (
+    ...<26 lines>...
+    )
+  File "/scratch/rra80/chexmix/.venv/lib/python3.14/site-packages/flax/linen/activation.py", line 21, in <module>
+    from flax.linen.module import compact
+  File "/scratch/rra80/chexmix/.venv/lib/python3.14/site-packages/flax/linen/module.py", line 3173, in <module>
+    class CompactNameScope(Module):
+    ...<5 lines>...
+        return self.fn(self.module_fn(), *args, **kwargs)
+  File "/scratch/rra80/chexmix/.venv/lib/python3.14/site-packages/flax/linen/module.py", line 1042, in __init_subclass__
+    cls._customized_dataclass_transform(kw_only)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/scratch/rra80/chexmix/.venv/lib/python3.14/site-packages/flax/linen/module.py", line 1114, in _customized_dataclass_transform
+    kw_only_dataclasses.dataclass(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+      cls,
+      ^^^^
+    ...<2 lines>...
+      extra_fields=extra_fields,
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # pytype: disable=wrong-keyword-args
+    ^
+  File "/scratch/rra80/chexmix/.venv/lib/python3.14/site-packages/flax/linen/kw_only_dataclasses.py", line 125, in dataclass
+    return wrap if cls is None else wrap(cls)
+                                    ~~~~^^^^^
+  File "/scratch/rra80/chexmix/.venv/lib/python3.14/site-packages/flax/linen/kw_only_dataclasses.py", line 123, in wrap
+    return _process_class(cls, extra_fields=extra_fields, **kwargs)
+  File "/scratch/rra80/chexmix/.venv/lib/python3.14/site-packages/flax/linen/kw_only_dataclasses.py", line 191, in _process_class
+    cls_annotations = cls.__dict__['__annotations__']
+                      ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+KeyError: '__annotations__'
