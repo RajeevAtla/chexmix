@@ -2,9 +2,9 @@
 name = "default"
 seed = 42
 devices = 4
-log_every_steps = 50
-checkpoint_every_steps = 500
-pgn_every_games = 50
+log_every_steps = 1
+checkpoint_every_steps = 1
+pgn_every_games = 1
 max_runtime_minutes = 720
 
 [env]
