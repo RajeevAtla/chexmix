@@ -8,7 +8,6 @@ from typing import cast
 import chex
 import jax
 import jax.numpy as jnp
-import optax
 import orbax.checkpoint as ocp
 import pytest
 from flax import nnx
@@ -16,13 +15,6 @@ from flax import nnx
 from chex_types import Array, Step
 from train.checkpointing import (
     CheckpointConfig,
-    CheckpointTree,
-    _as_state_if_dict,
-    _is_value_dict,
-    _normalize_pytree,
-    _restore_opt_state,
-    _state_to_tree,
-    _tree_to_state,
     make_checkpoint_manager,
     restore_latest,
     save_checkpoint,
@@ -55,6 +47,16 @@ class TinyModel(nnx.Module):
         return x * self.w[...]
 
 
+def _dummy_state() -> TrainState:
+    """Create a minimal TrainState for restore tests."""
+    return TrainState(
+        step=Step(0),
+        params=nnx.State({}),
+        opt_state=(),
+        rng_key=jax.random.PRNGKey(0),
+    )
+
+
 def test_checkpoint_roundtrip(tmp_path: Path) -> None:
     """Checkpoint save/restore roundtrips a TrainState."""
     # Build a tiny model and optimizer state.
@@ -85,7 +87,7 @@ def test_checkpoint_roundtrip(tmp_path: Path) -> None:
     )
 
     save_checkpoint(manager, state)
-    restored = restore_latest(manager, _state_to_tree(state))
+    restored = restore_latest(manager, state)
 
     # All fields should roundtrip exactly.
     chex.assert_trees_all_equal(restored.params, state.params)
@@ -101,100 +103,11 @@ def test_restore_latest_missing(tmp_path: Path) -> None:
         CheckpointConfig(every_steps=1, max_to_keep=1),
     )
     with pytest.raises(FileNotFoundError):
-        _ = restore_latest(manager, cast(CheckpointTree, {"step": 0}))
-
-
-def test_tree_to_state_missing_step() -> None:
-    """_tree_to_state rejects missing step field."""
-    tree = cast(
-        CheckpointTree,
-        {
-            "params": nnx.State({}),
-            "opt_state": (),
-            "rng_key": jax.random.PRNGKey(0),
-        },
-    )
-    with pytest.raises(ValueError, match="integer step"):
-        _ = _tree_to_state(tree)
-
-
-def test_tree_to_state_invalid_params_structure() -> None:
-    """_tree_to_state rejects invalid params dict structure."""
-    tree = cast(
-        CheckpointTree,
-        {
-            "step": 0,
-            "params": {"value": jnp.array([1.0], dtype=jnp.float32)},
-            "opt_state": (),
-            "rng_key": jax.random.PRNGKey(0),
-        },
-    )
-    with pytest.raises(ValueError, match="invalid structure"):
-        _ = _tree_to_state(tree)
-
-
-def test_tree_to_state_missing_params() -> None:
-    """_tree_to_state rejects missing params state."""
-    tree = cast(
-        CheckpointTree,
-        {
-            "step": 0,
-            "params": 1,
-            "opt_state": (),
-            "rng_key": jax.random.PRNGKey(0),
-        },
-    )
-    with pytest.raises(ValueError, match="params state"):
-        _ = _tree_to_state(tree)
-
-
-def test_tree_to_state_missing_opt_state() -> None:
-    """_tree_to_state rejects missing optimizer state."""
-    tree = cast(
-        CheckpointTree,
-        {
-            "step": 0,
-            "params": nnx.State({}),
-            "opt_state": None,
-            "rng_key": jax.random.PRNGKey(0),
-        },
-    )
-    with pytest.raises(ValueError, match="optimizer state"):
-        _ = _tree_to_state(tree)
-
-
-def test_tree_to_state_invalid_params_state_structure() -> None:
-    """_tree_to_state rejects malformed nnx.State."""
-    tree = cast(
-        CheckpointTree,
-        {
-            "step": 0,
-            "params": nnx.State({"value": jnp.array([1.0], dtype=jnp.float32)}),
-            "opt_state": (),
-            "rng_key": jax.random.PRNGKey(0),
-        },
-    )
-    with pytest.raises(ValueError, match="invalid structure"):
-        _ = _tree_to_state(tree)
-
-
-def test_tree_to_state_missing_rng_key() -> None:
-    """_tree_to_state rejects missing RNG key."""
-    tree = cast(
-        CheckpointTree,
-        {
-            "step": 0,
-            "params": nnx.State({}),
-            "opt_state": (),
-            "rng_key": 123,
-        },
-    )
-    with pytest.raises(ValueError, match="RNG key"):
-        _ = _tree_to_state(tree)
+        _ = restore_latest(manager, _dummy_state())
 
 
 def test_restore_latest_invalid_mapping() -> None:
-    """restore_latest rejects non-mapping restore payloads."""
+    """restore_latest rejects non-TrainState restore payloads."""
 
     class DummyManager:
         """CheckpointManager stub returning invalid data."""
@@ -206,62 +119,12 @@ def test_restore_latest_invalid_mapping() -> None:
         def restore(
             self, step: int, **_kwargs: ocp.args.StandardRestore
         ) -> int:
-            """Return an invalid payload instead of a mapping."""
+            """Return an invalid payload instead of a TrainState."""
             del step
             return 123
 
-    with pytest.raises(ValueError, match="not a mapping"):
+    with pytest.raises(ValueError, match="TrainState"):
         _ = restore_latest(
             cast(ocp.CheckpointManager, DummyManager()),
-            cast(CheckpointTree, {"step": 0}),
+            _dummy_state(),
         )
-
-
-def test_checkpoint_helpers_paths() -> None:
-    """Helper utilities handle edge cases for pytrees and opt state."""
-
-    # Validate helper behavior for edge cases.
-    assert not _is_value_dict(1)
-    assert _normalize_pytree([1, 2]) == (1, 2)
-    assert _normalize_pytree({"a": 1}) == {"a": 1}
-    assert _as_state_if_dict(1) == 1
-    restored = _restore_opt_state((None, None))
-    assert isinstance(restored, tuple)
-    assert isinstance(restored[0], optax.EmptyState)
-    fallback = _restore_opt_state({"foo": 1})
-    fallback_dict = cast(dict[str, int], fallback)
-    assert fallback_dict["foo"] == 1
-
-
-def test_restore_opt_state_structs() -> None:
-    """_restore_opt_state reconstructs Optax state containers."""
-    count = jnp.array(0, dtype=jnp.int32)
-    value = jnp.array([0.0], dtype=jnp.float32)
-    adam_state = _restore_opt_state(
-        {
-            "count": count,
-            "mu": {"w": {"value": value}},
-            "nu": {"w": {"value": value}},
-        }
-    )
-    assert isinstance(adam_state, optax.ScaleByAdamState)
-    schedule_state = _restore_opt_state({"count": count})
-    assert isinstance(schedule_state, optax.ScaleByScheduleState)
-    list_state = _restore_opt_state([None, None])
-    assert isinstance(list_state, tuple)
-    assert isinstance(list_state[0], optax.EmptyState)
-
-
-def test_tree_to_state_with_dict_params() -> None:
-    """_tree_to_state converts dict params into nnx.State."""
-    tree = cast(
-        CheckpointTree,
-        {
-            "step": 1,
-            "params": {"w": {"value": jnp.array([1.0], dtype=jnp.float32)}},
-            "opt_state": optax.EmptyState(),
-            "rng_key": jax.random.PRNGKey(0),
-        },
-    )
-    state = _tree_to_state(tree)
-    assert isinstance(state.params, nnx.State)
