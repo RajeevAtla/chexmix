@@ -1,0 +1,9 @@
+[event_0001]
+event = "start"
+git_sha = "e0ca981c0b480cfab40490a7e425f0fa74bbe033"
+host = "gpuk003.amarel.rutgers.edu"
+platform = "Linux-3.10.0-1160.119.1.el7.x86_64-x86_64-with-glibc2.39"
+python = "3.13.9"
+run_id = "20251229_032516_default"
+run_name = "default"
+started_utc = "2025-12-29T03:25:16.165836+00:00"

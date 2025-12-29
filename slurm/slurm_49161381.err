@@ -1,0 +1,32 @@
+INFO:    underlay of /usr/bin/nvidia-smi required more than 50 (479) bind mounts
+15:4: not a valid test operator:  
+15:4: not a valid test operator: 13.0
+21:4: not a valid test operator: (
+21:4: not a valid test operator: 535.154.05
+downloading uv 0.9.18 x86_64-unknown-linux-gnu
+Resolved 62 packages in 2ms
+Audited 60 packages in 348ms
+Traceback (most recent call last):
+  File "/scratch/rra80/chexmix/__main__.py", line 27, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/scratch/rra80/chexmix/__main__.py", line 23, in main
+    return cli.main()
+           ~~~~~~~~^^
+  File "/scratch/rra80/chexmix/src/cli.py", line 744, in main
+    _train(config, paths, run_id)
+    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/rra80/chexmix/src/cli.py", line 644, in _train
+    _write_pgn_snapshot(
+    ~~~~~~~~~~~~~~~~~~~^
+        paths, run_cfg.name, next_pgn_index, last_traj
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/scratch/rra80/chexmix/src/cli.py", line 477, in _write_pgn_snapshot
+    moves.append(_move_to_coord(decode_action(int(actions[idx]))))
+                 ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/rra80/chexmix/src/cli.py", line 439, in _move_to_coord
+    to_sq = f"{file_map[move.to_file]}{move.to_rank + 1}"
+               ~~~~~~~~^^^^^^^^^^^^^^
+IndexError: string index out of range
