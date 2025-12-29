@@ -37,7 +37,7 @@ def make_checkpoint_manager(
     options = ocp.CheckpointManagerOptions(
         max_to_keep=cfg.max_to_keep,
         create=True,
-        enable_async_checkpointing=False,
+        enable_async_checkpointing=True,
     )
     return ocp.CheckpointManager(
         checkpoints_dir,
