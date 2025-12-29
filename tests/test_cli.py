@@ -22,6 +22,7 @@ from cli import (
     _get_table,
     _get_table_optional,
     _git_sha,
+    _move_to_coord,
     _parse_env_config,
     _parse_run_config,
     _run_id,
@@ -36,6 +37,7 @@ from cli import (
 )
 from mcts.planner import MctsConfig
 from paths import RunPaths
+from pgn.encode import DecodedMove
 from selfplay.rollout import SelfPlayConfig
 from selfplay.trajectory import Trajectory
 from toml_io import TomlValue, load_toml, save_toml
@@ -146,6 +148,7 @@ def _fake_selfplay(
         obs=obs,
         policy_targets=policy,
         actions=actions,
+        legal_action_mask=jnp.ones((batch, max_moves, 4672), dtype=jnp.bool_),
         player_id=player_id,
         valid=valid,
         outcome=outcome,
@@ -316,6 +319,7 @@ def test_events_and_pgn(
         obs=jnp.zeros((1, 2, 8, 8, 119), dtype=jnp.float32),
         policy_targets=jnp.zeros((1, 2, 4672), dtype=jnp.float32),
         actions=jnp.zeros((1, 2), dtype=jnp.int32),
+        legal_action_mask=jnp.ones((1, 2, 4672), dtype=jnp.bool_),
         player_id=jnp.zeros((1, 2), dtype=jnp.int32),
         valid=jnp.ones((1, 2), dtype=jnp.bool_),
         outcome=jnp.zeros((1, 2), dtype=jnp.float32),
@@ -355,6 +359,7 @@ def test_pgn_snapshot_stops_on_invalid(tmp_path: Path) -> None:
         obs=jnp.zeros((1, 2, 8, 8, 119), dtype=jnp.float32),
         policy_targets=jnp.zeros((1, 2, 4672), dtype=jnp.float32),
         actions=jnp.array([[0, 1]], dtype=jnp.int32),
+        legal_action_mask=jnp.ones((1, 2, 4672), dtype=jnp.bool_),
         player_id=jnp.zeros((1, 2), dtype=jnp.int32),
         valid=jnp.array([[1, 0]], dtype=jnp.bool_),
         outcome=jnp.zeros((1, 2), dtype=jnp.float32),
@@ -364,6 +369,66 @@ def test_pgn_snapshot_stops_on_invalid(tmp_path: Path) -> None:
         encoding="utf-8"
     )
     assert "a1a2" in content
+
+
+def test_move_to_coord_rejects_out_of_bounds() -> None:
+    """_move_to_coord returns None for out-of-bounds moves."""
+    move = DecodedMove(from_file=0, from_rank=0, to_file=9, to_rank=0, promo="")
+    assert _move_to_coord(move) is None
+
+
+def test_pgn_snapshot_stops_on_illegal_mask(tmp_path: Path) -> None:
+    """PGN snapshot stops when legal_action_mask is false."""
+    paths = RunPaths(
+        root=tmp_path,
+        checkpoints=tmp_path / "checkpoints",
+        metrics_dir=tmp_path / "metrics",
+        games_dir=tmp_path / "games",
+        events_toml=tmp_path / "events.toml",
+        config_toml=tmp_path / "config.toml",
+    )
+    paths.games_dir.mkdir(parents=True, exist_ok=True)
+    traj = Trajectory(
+        obs=jnp.zeros((1, 1, 8, 8, 119), dtype=jnp.float32),
+        policy_targets=jnp.zeros((1, 1, 4672), dtype=jnp.float32),
+        actions=jnp.zeros((1, 1), dtype=jnp.int32),
+        legal_action_mask=jnp.zeros((1, 1, 4672), dtype=jnp.bool_),
+        player_id=jnp.zeros((1, 1), dtype=jnp.int32),
+        valid=jnp.ones((1, 1), dtype=jnp.bool_),
+        outcome=jnp.zeros((1, 1), dtype=jnp.float32),
+    )
+    _write_pgn_snapshot(paths, "demo", 1, traj)
+    content = (paths.games_dir / "game_0000000001.pgn").read_text(
+        encoding="utf-8"
+    )
+    assert "1. " not in content
+
+
+def test_pgn_snapshot_stops_on_out_of_bounds_move(tmp_path: Path) -> None:
+    """PGN snapshot stops when decoded move is out of bounds."""
+    paths = RunPaths(
+        root=tmp_path,
+        checkpoints=tmp_path / "checkpoints",
+        metrics_dir=tmp_path / "metrics",
+        games_dir=tmp_path / "games",
+        events_toml=tmp_path / "events.toml",
+        config_toml=tmp_path / "config.toml",
+    )
+    paths.games_dir.mkdir(parents=True, exist_ok=True)
+    traj = Trajectory(
+        obs=jnp.zeros((1, 1, 8, 8, 119), dtype=jnp.float32),
+        policy_targets=jnp.zeros((1, 1, 4672), dtype=jnp.float32),
+        actions=jnp.array([[7]], dtype=jnp.int32),
+        legal_action_mask=jnp.ones((1, 1, 4672), dtype=jnp.bool_),
+        player_id=jnp.zeros((1, 1), dtype=jnp.int32),
+        valid=jnp.ones((1, 1), dtype=jnp.bool_),
+        outcome=jnp.zeros((1, 1), dtype=jnp.float32),
+    )
+    _write_pgn_snapshot(paths, "demo", 1, traj)
+    content = (paths.games_dir / "game_0000000001.pgn").read_text(
+        encoding="utf-8"
+    )
+    assert "1. " not in content
 
 
 def test_split_batch_and_combine_traj() -> None:
@@ -378,6 +443,7 @@ def test_split_batch_and_combine_traj() -> None:
         obs=jnp.zeros((2, 3, 8, 8, 119), dtype=jnp.float32),
         policy_targets=jnp.zeros((2, 3, 4672), dtype=jnp.float32),
         actions=jnp.zeros((2, 3), dtype=jnp.int32),
+        legal_action_mask=jnp.ones((2, 3, 4672), dtype=jnp.bool_),
         player_id=jnp.zeros((2, 3), dtype=jnp.int32),
         valid=jnp.ones((2, 3), dtype=jnp.bool_),
         outcome=jnp.zeros((2, 3), dtype=jnp.float32),

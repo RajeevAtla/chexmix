@@ -126,12 +126,16 @@ def test_selfplay_rollout_determinism(monkeypatch: pytest.MonkeyPatch) -> None:
     chex.assert_trees_all_equal(traj1.obs, traj2.obs)
     chex.assert_trees_all_equal(traj1.policy_targets, traj2.policy_targets)
     chex.assert_trees_all_equal(traj1.actions, traj2.actions)
+    chex.assert_trees_all_equal(
+        traj1.legal_action_mask, traj2.legal_action_mask
+    )
     chex.assert_trees_all_equal(traj1.player_id, traj2.player_id)
     chex.assert_trees_all_equal(traj1.valid, traj2.valid)
     chex.assert_trees_all_equal(traj1.outcome, traj2.outcome)
     assert traj1.obs.shape == (2, 4, 8, 8, 119)
     assert traj1.policy_targets.shape == (2, 4, 4672)
     assert traj1.actions.shape == (2, 4)
+    assert traj1.legal_action_mask.shape == (2, 4, 4672)
     assert traj1.player_id.shape == (2, 4)
     assert traj1.valid.shape == (2, 4)
     assert traj1.outcome.shape == (2, 4)
@@ -149,6 +153,7 @@ def test_replay_buffer_sample() -> None:
         obs=obs,
         policy_targets=policy,
         actions=jnp.zeros((1, 2), dtype=jnp.int32),
+        legal_action_mask=jnp.ones((1, 2, 4672), dtype=jnp.bool_),
         player_id=player_id,
         valid=valid,
         outcome=outcome,
@@ -190,6 +195,7 @@ def _make_traj(
         obs=obs,
         policy_targets=policy,
         actions=jnp.zeros((1, steps), dtype=jnp.int32),
+        legal_action_mask=jnp.ones((1, steps, 4672), dtype=jnp.bool_),
         player_id=player_id,
         valid=valid_mask,
         outcome=outcome,

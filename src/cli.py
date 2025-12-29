@@ -426,15 +426,27 @@ def _combine_traj(traj: Trajectory) -> Trajectory:
         obs=_merge(traj.obs),
         policy_targets=_merge(traj.policy_targets),
         actions=_merge(traj.actions),
+        legal_action_mask=_merge(traj.legal_action_mask),
         player_id=_merge(traj.player_id),
         valid=_merge(traj.valid),
         outcome=_merge(traj.outcome),
     )
 
 
-def _move_to_coord(move: DecodedMove) -> str:
+def _move_to_coord(move: DecodedMove) -> str | None:
     """Convert a decoded move to coordinate notation."""
     file_map = "abcdefgh"
+    if (
+        move.from_file < 0
+        or move.from_file > 7
+        or move.from_rank < 0
+        or move.from_rank > 7
+        or move.to_file < 0
+        or move.to_file > 7
+        or move.to_rank < 0
+        or move.to_rank > 7
+    ):
+        return None
     from_sq = f"{file_map[move.from_file]}{move.from_rank + 1}"
     to_sq = f"{file_map[move.to_file]}{move.to_rank + 1}"
     return f"{from_sq}{to_sq}{move.promo}"
@@ -470,11 +482,18 @@ def _write_pgn_snapshot(
     valid = traj.valid[0]
     player_id = traj.player_id[0]
     outcome = traj.outcome[0]
+    legal_mask = traj.legal_action_mask[0]
     moves: list[str] = []
     for idx in range(actions.shape[0]):
         if not bool(valid[idx]):
             break
-        moves.append(_move_to_coord(decode_action(int(actions[idx]))))
+        action = int(actions[idx])
+        if not bool(legal_mask[idx, action]):
+            break
+        coord = _move_to_coord(decode_action(action))
+        if coord is None:
+            break
+        moves.append(coord)
 
     headers = PgnHeaders(
         event=run_name,
