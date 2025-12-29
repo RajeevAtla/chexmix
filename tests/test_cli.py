@@ -15,6 +15,7 @@ from cli import (
     _append_event,
     _combine_traj,
     _eval,
+    _game_result,
     _get_float,
     _get_int,
     _get_str,
@@ -137,12 +138,14 @@ def _fake_selfplay(
     max_moves = cfg.max_moves
     obs = jnp.zeros((batch, max_moves, 8, 8, 119), dtype=jnp.float32)
     policy = jnp.full((batch, max_moves, 4672), 1.0 / 4672.0, dtype=jnp.float32)
+    actions = jnp.zeros((batch, max_moves), dtype=jnp.int32)
     player_id = jnp.zeros((batch, max_moves), dtype=jnp.int32)
     valid = jnp.ones((batch, max_moves), dtype=jnp.bool_)
     outcome = jnp.zeros((batch, max_moves), dtype=jnp.float32)
     return Trajectory(
         obs=obs,
         policy_targets=policy,
+        actions=actions,
         player_id=player_id,
         valid=valid,
         outcome=outcome,
@@ -309,10 +312,58 @@ def test_events_and_pgn(
     _write_start_event(paths, run_id, "demo")
     _write_stop_event(paths, run_id, "demo", "done")
     _write_bootstrap_artifacts(paths, "demo")
-    _write_pgn_snapshot(paths, "demo", 2)
+    traj = Trajectory(
+        obs=jnp.zeros((1, 2, 8, 8, 119), dtype=jnp.float32),
+        policy_targets=jnp.zeros((1, 2, 4672), dtype=jnp.float32),
+        actions=jnp.zeros((1, 2), dtype=jnp.int32),
+        player_id=jnp.zeros((1, 2), dtype=jnp.int32),
+        valid=jnp.ones((1, 2), dtype=jnp.bool_),
+        outcome=jnp.zeros((1, 2), dtype=jnp.float32),
+    )
+    _write_pgn_snapshot(paths, "demo", 2, traj)
     assert paths.events_toml.exists()
     assert (paths.games_dir / "game_0000000001.pgn").exists()
     assert (paths.games_dir / "game_0000000002.pgn").exists()
+
+
+def test_game_result_tokens() -> None:
+    """_game_result returns expected PGN result tokens."""
+    outcome = jnp.array([0.0, 1.0], dtype=jnp.float32)
+    player_id = jnp.array([0, 0], dtype=jnp.int32)
+    valid = jnp.array([0, 0], dtype=jnp.bool_)
+    assert _game_result(outcome, player_id, valid) == "*"
+
+    valid = jnp.array([1, 1], dtype=jnp.bool_)
+    assert _game_result(outcome, player_id, valid) == "1-0"
+
+    player_id_black = jnp.array([1, 1], dtype=jnp.int32)
+    assert _game_result(outcome, player_id_black, valid) == "0-1"
+
+
+def test_pgn_snapshot_stops_on_invalid(tmp_path: Path) -> None:
+    """PGN snapshot stops at first invalid move."""
+    paths = RunPaths(
+        root=tmp_path,
+        checkpoints=tmp_path / "checkpoints",
+        metrics_dir=tmp_path / "metrics",
+        games_dir=tmp_path / "games",
+        events_toml=tmp_path / "events.toml",
+        config_toml=tmp_path / "config.toml",
+    )
+    paths.games_dir.mkdir(parents=True, exist_ok=True)
+    traj = Trajectory(
+        obs=jnp.zeros((1, 2, 8, 8, 119), dtype=jnp.float32),
+        policy_targets=jnp.zeros((1, 2, 4672), dtype=jnp.float32),
+        actions=jnp.array([[0, 1]], dtype=jnp.int32),
+        player_id=jnp.zeros((1, 2), dtype=jnp.int32),
+        valid=jnp.array([[1, 0]], dtype=jnp.bool_),
+        outcome=jnp.zeros((1, 2), dtype=jnp.float32),
+    )
+    _write_pgn_snapshot(paths, "demo", 1, traj)
+    content = (paths.games_dir / "game_0000000001.pgn").read_text(
+        encoding="utf-8"
+    )
+    assert "a1a2" in content
 
 
 def test_split_batch_and_combine_traj() -> None:
@@ -326,6 +377,7 @@ def test_split_batch_and_combine_traj() -> None:
     traj = Trajectory(
         obs=jnp.zeros((2, 3, 8, 8, 119), dtype=jnp.float32),
         policy_targets=jnp.zeros((2, 3, 4672), dtype=jnp.float32),
+        actions=jnp.zeros((2, 3), dtype=jnp.int32),
         player_id=jnp.zeros((2, 3), dtype=jnp.int32),
         valid=jnp.ones((2, 3), dtype=jnp.bool_),
         outcome=jnp.zeros((2, 3), dtype=jnp.float32),

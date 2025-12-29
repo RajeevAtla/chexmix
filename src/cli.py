@@ -19,7 +19,7 @@ import jax
 import jax.numpy as jnp
 from flax import nnx
 
-from chex_types import PRNGKey, Step
+from chex_types import Array, PRNGKey, Step
 from env.pgx_chess import make_chess_env
 from eval.arena import MatchResult
 from eval.elo import expected_score, update_elo
@@ -27,6 +27,7 @@ from mcts.planner import MctsConfig
 from model.chess_transformer import ChessTransformer
 from model.nnx_blocks import TransformerConfig
 from paths import RunPaths
+from pgn.encode import DecodedMove, decode_action
 from pgn.writer import PgnHeaders, format_pgn, write_pgn_file
 from rng import RngStream
 from selfplay.buffer import ReplayBuffer, ReplayConfig
@@ -382,6 +383,31 @@ def _split_batch(
     return jax.tree_util.tree_map(_split, batch)
 
 
+def _apply_model(
+    model: nnx.Module, params: nnx.State, obs: Array
+) -> tuple[Array, Array]:
+    """Apply a model with explicit parameters to return logits and values."""
+    graphdef, _ = nnx.split(model)
+    merged = nnx.merge(graphdef, params)
+    output = merged(obs)
+    return output.policy_logits, output.value
+
+
+def _compute_value_entropy(
+    model: nnx.Module, params: nnx.State, batch: dict[str, Array]
+) -> tuple[float, float]:
+    """Compute mean value and policy entropy for a batch."""
+    policy_logits, value_pred = _apply_model(model, params, batch["obs"])
+    valid = batch["valid"].astype(jnp.float32)
+    denom = jnp.maximum(jnp.sum(valid), 1.0)
+    value_mean = jnp.sum(value_pred * valid) / denom
+    log_probs = jax.nn.log_softmax(policy_logits, axis=-1)
+    probs = jnp.exp(log_probs)
+    entropy = -jnp.sum(probs * log_probs, axis=-1)
+    entropy_mean = jnp.sum(entropy * valid) / denom
+    return float(value_mean), float(entropy_mean)
+
+
 def _combine_traj(traj: Trajectory) -> Trajectory:
     """Flatten (devices, games, ...) trajectory axes into a single batch.
 
@@ -399,23 +425,57 @@ def _combine_traj(traj: Trajectory) -> Trajectory:
     return Trajectory(
         obs=_merge(traj.obs),
         policy_targets=_merge(traj.policy_targets),
+        actions=_merge(traj.actions),
         player_id=_merge(traj.player_id),
         valid=_merge(traj.valid),
         outcome=_merge(traj.outcome),
     )
 
 
+def _move_to_coord(move: DecodedMove) -> str:
+    """Convert a decoded move to coordinate notation."""
+    file_map = "abcdefgh"
+    from_sq = f"{file_map[move.from_file]}{move.from_rank + 1}"
+    to_sq = f"{file_map[move.to_file]}{move.to_rank + 1}"
+    return f"{from_sq}{to_sq}{move.promo}"
+
+
+def _game_result(outcome: Array, player_id: Array, valid: Array) -> str:
+    """Infer PGN result token from final outcome."""
+    if not bool(jnp.any(valid)):
+        return "*"
+    last_idx = jnp.max(jnp.where(valid, jnp.arange(valid.shape[0]), -1))
+    last_outcome = float(outcome[last_idx])
+    last_player = int(player_id[last_idx])
+    if last_outcome == 0.0:
+        return "1/2-1/2"
+    winner_is_white = (last_outcome > 0.0 and last_player == 0) or (
+        last_outcome < 0.0 and last_player == 1
+    )
+    return "1-0" if winner_is_white else "0-1"
+
+
 def _write_pgn_snapshot(
-    paths: RunPaths, run_name: str, game_index: int
+    paths: RunPaths, run_name: str, game_index: int, traj: Trajectory
 ) -> None:
-    """Write a placeholder PGN snapshot for a given game index.
+    """Write a PGN snapshot for a given game index.
 
     Args:
         paths: RunPaths for the current run.
         run_name: Run name for PGN headers.
         game_index: Sequence number for naming.
+        traj: Trajectory batch containing actions and outcomes.
     """
-    # Use minimal headers until real move logging is wired in.
+    actions = traj.actions[0]
+    valid = traj.valid[0]
+    player_id = traj.player_id[0]
+    outcome = traj.outcome[0]
+    moves: list[str] = []
+    for idx in range(actions.shape[0]):
+        if not bool(valid[idx]):
+            break
+        moves.append(_move_to_coord(decode_action(int(actions[idx]))))
+
     headers = PgnHeaders(
         event=run_name,
         site="local",
@@ -423,9 +483,9 @@ def _write_pgn_snapshot(
         round=str(game_index),
         white="selfplay",
         black="selfplay",
-        result="*",
+        result=_game_result(outcome, player_id, valid),
     )
-    pgn = format_pgn(headers, moves=[])
+    pgn = format_pgn(headers, moves=moves)
     filename = f"game_{game_index:010d}.pgn"
     write_pgn_file(paths.games_dir / filename, pgn)
 
@@ -552,6 +612,7 @@ def _train(config: dict[str, TomlValue], paths: RunPaths, run_id: str) -> None:
         _write_bootstrap_artifacts(paths, run_cfg.name)
         games_played = 0
         next_pgn_index = 1
+        last_traj: Trajectory | None = None
         start_time = time.monotonic()
         total_steps = optim_cfg.total_steps
 
@@ -572,13 +633,17 @@ def _train(config: dict[str, TomlValue], paths: RunPaths, run_id: str) -> None:
                     ]
                 )
                 traj = p_selfplay(device_keys, state.params)
-                replay.add(_combine_traj(traj))
+                last_traj = _combine_traj(traj)
+                replay.add(last_traj)
                 games_played += device_count * selfplay_cfg.games_per_device
 
             # Emit placeholder PGN snapshots at the configured cadence.
             if games_played >= run_cfg.pgn_every_games * next_pgn_index:
                 next_pgn_index += 1
-                _write_pgn_snapshot(paths, run_cfg.name, next_pgn_index)
+                if last_traj is not None:
+                    _write_pgn_snapshot(
+                        paths, run_cfg.name, next_pgn_index, last_traj
+                    )
 
             # Sample a batch and run a training step.
             batch_size = train_cfg.batch_size_per_device * device_count
@@ -592,13 +657,17 @@ def _train(config: dict[str, TomlValue], paths: RunPaths, run_id: str) -> None:
                 losses_host = jax.tree_util.tree_map(
                     lambda x: float(jax.device_get(x)), losses
                 )
+                params_host = jax.device_get(state.params)
+                value_mean, entropy_mean = _compute_value_entropy(
+                    model, params_host, batch
+                )
                 metrics = Metrics(
                     step=step + 1,
                     loss_total=losses_host.total,
                     loss_policy=losses_host.policy,
                     loss_value=losses_host.value,
-                    value_mean=0.0,
-                    entropy_mean=0.0,
+                    value_mean=value_mean,
+                    entropy_mean=entropy_mean,
                 )
                 write_metrics_snapshot(paths, metrics)
 

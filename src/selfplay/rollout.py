@@ -75,7 +75,7 @@ def generate_selfplay_trajectories(
 
     def step_fn(
         carry: pgx.State, step_idx: Array
-    ) -> tuple[pgx.State, tuple[Array, Array, Array, Array]]:
+    ) -> tuple[pgx.State, tuple[Array, Array, Array, Array, Array]]:
         """Advance one step and collect trajectory data."""
         obs = carry.observation
         player_id = carry.current_player
@@ -98,15 +98,16 @@ def generate_selfplay_trajectories(
         next_state = jax.vmap(env.step)(carry, mcts_out.action)
         carry = _tree_where(valid, next_state, carry)
 
-        return carry, (obs, policy_targets, player_id, valid)
+        return carry, (obs, policy_targets, mcts_out.action, player_id, valid)
 
     # Unroll self-play for a fixed number of moves.
     steps = jnp.arange(max_moves)
     final_state, history = jax.lax.scan(step_fn, state, steps)
-    obs, policy_targets, player_id, valid = history
+    obs, policy_targets, actions, player_id, valid = history
     # Swap scan axes to (B, T, ...).
     obs = jnp.swapaxes(obs, 0, 1)
     policy_targets = jnp.swapaxes(policy_targets, 0, 1)
+    actions = jnp.swapaxes(actions, 0, 1)
     player_id = jnp.swapaxes(player_id, 0, 1)
     valid = jnp.swapaxes(valid, 0, 1)
 
@@ -122,6 +123,7 @@ def generate_selfplay_trajectories(
     return Trajectory(
         obs=obs,
         policy_targets=policy_targets,
+        actions=actions,
         player_id=player_id,
         valid=valid,
         outcome=outcome,

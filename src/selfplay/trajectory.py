@@ -22,6 +22,7 @@ class Trajectory:
     Shapes:
         obs: (B, T, 8, 8, 119)
         policy_targets: (B, T, 4672)
+        actions: (B, T)
         player_id: (B, T)  -- player-to-move at time t
         valid: (B, T)      -- timestep validity mask
         outcome: (B, T)    -- z in {-1,0,1} from perspective of player-to-move
@@ -29,6 +30,7 @@ class Trajectory:
 
     obs: Array
     policy_targets: Array
+    actions: Array
     player_id: Array
     valid: Array
     outcome: Array
@@ -44,6 +46,7 @@ class Trajectory:
             (
                 self.obs,
                 self.policy_targets,
+                self.actions,
                 self.player_id,
                 self.valid,
                 self.outcome,
@@ -66,10 +69,11 @@ class Trajectory:
         """
         del aux_data
         # Unpack in the same order as tree_flatten.
-        obs, policy_targets, player_id, valid, outcome = children
+        obs, policy_targets, actions, player_id, valid, outcome = children
         return cls(
             obs=obs,
             policy_targets=policy_targets,
+            actions=actions,
             player_id=player_id,
             valid=valid,
             outcome=outcome,
