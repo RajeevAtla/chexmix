@@ -49,6 +49,10 @@ class _DummyCheckpointManager:
         """Return None to indicate no checkpoint is present."""
         return None
 
+    def wait_until_finished(self) -> None:
+        """No-op wait for async checkpointing."""
+        return None
+
 
 class _ResumeCheckpointManager:
     """Checkpoint manager stub that signals a resume is available."""
@@ -56,6 +60,10 @@ class _ResumeCheckpointManager:
     def latest_step(self) -> int | None:
         """Return a fake latest step to trigger restore."""
         return 0
+
+    def wait_until_finished(self) -> None:
+        """No-op wait for async checkpointing."""
+        return None
 
 
 def _minimal_train_config() -> dict[str, TomlValue]:

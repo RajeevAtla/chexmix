@@ -516,98 +516,101 @@ def _train(config: dict[str, TomlValue], paths: RunPaths, run_id: str) -> None:
     if manager.latest_step() is not None:
         state = restore_latest(manager, state)
 
-    # Define pmapped functions for self-play and training.
-    def _selfplay_fn(rng_key: PRNGKey, params: nnx.State):
-        return generate_selfplay_trajectories(
-            env=env,
-            model=model,
-            params=params,
-            rng_key=rng_key,
-            selfplay_cfg=selfplay_cfg,
-            mcts_cfg=mcts_cfg,
+    try:
+        # Define pmapped functions for self-play and training.
+        def _selfplay_fn(rng_key: PRNGKey, params: nnx.State):
+            return generate_selfplay_trajectories(
+                env=env,
+                model=model,
+                params=params,
+                rng_key=rng_key,
+                selfplay_cfg=selfplay_cfg,
+                mcts_cfg=mcts_cfg,
+            )
+
+        def _train_fn(state_in: TrainState, batch):
+            return train_step(
+                model=model,
+                tx=tx,
+                state=state_in,
+                batch=batch,
+                loss_cfg=loss_cfg,
+            )
+
+        p_selfplay = jax.pmap(
+            _selfplay_fn, axis_name="data", devices=devices, in_axes=(0, None)
+        )
+        p_train = jax.pmap(
+            _train_fn,
+            axis_name="data",
+            devices=devices,
+            in_axes=(None, 0),
+            out_axes=(None, None),
         )
 
-    def _train_fn(state_in: TrainState, batch):
-        return train_step(
-            model=model,
-            tx=tx,
-            state=state_in,
-            batch=batch,
-            loss_cfg=loss_cfg,
-        )
+        # Bootstrap metrics/PGN to ensure run dirs have artifacts.
+        _write_bootstrap_artifacts(paths, run_cfg.name)
+        games_played = 0
+        next_pgn_index = 1
+        start_time = time.monotonic()
+        total_steps = optim_cfg.total_steps
 
-    p_selfplay = jax.pmap(
-        _selfplay_fn, axis_name="data", devices=devices, in_axes=(0, None)
-    )
-    p_train = jax.pmap(
-        _train_fn,
-        axis_name="data",
-        devices=devices,
-        in_axes=(None, 0),
-        out_axes=(None, None),
-    )
+        for step in range(total_steps):
+            # Enforce wall-clock timeout.
+            elapsed_minutes = (time.monotonic() - start_time) / 60.0
+            if elapsed_minutes >= run_cfg.max_runtime_minutes:
+                _write_stop_event(paths, run_id, run_cfg.name, "time")
+                return
 
-    # Bootstrap metrics/PGN to ensure run dirs have artifacts.
-    _write_bootstrap_artifacts(paths, run_cfg.name)
-    games_played = 0
-    next_pgn_index = 1
-    start_time = time.monotonic()
-    total_steps = optim_cfg.total_steps
+            # Generate self-play trajectories until replay is primed.
+            if not replay.can_sample():
+                step_key = rng_stream.key_for_step(Step(step))
+                device_keys = jnp.stack(
+                    [
+                        rng_stream.key_for_device(step_key, i)
+                        for i in range(device_count)
+                    ]
+                )
+                traj = p_selfplay(device_keys, state.params)
+                replay.add(_combine_traj(traj))
+                games_played += device_count * selfplay_cfg.games_per_device
 
-    for step in range(total_steps):
-        # Enforce wall-clock timeout.
-        elapsed_minutes = (time.monotonic() - start_time) / 60.0
-        if elapsed_minutes >= run_cfg.max_runtime_minutes:
-            _write_stop_event(paths, run_id, run_cfg.name, "time")
-            return
+            # Emit placeholder PGN snapshots at the configured cadence.
+            if games_played >= run_cfg.pgn_every_games * next_pgn_index:
+                next_pgn_index += 1
+                _write_pgn_snapshot(paths, run_cfg.name, next_pgn_index)
 
-        # Generate self-play trajectories until replay is primed.
-        if not replay.can_sample():
-            step_key = rng_stream.key_for_step(Step(step))
-            device_keys = jnp.stack(
-                [
-                    rng_stream.key_for_device(step_key, i)
-                    for i in range(device_count)
-                ]
-            )
-            traj = p_selfplay(device_keys, state.params)
-            replay.add(_combine_traj(traj))
-            games_played += device_count * selfplay_cfg.games_per_device
+            # Sample a batch and run a training step.
+            batch_size = train_cfg.batch_size_per_device * device_count
+            sample_key = rng_stream.key_for_step(Step(step + 10_000))
+            batch = replay.sample_batch(sample_key, batch_size)
+            shard_batch = _split_batch(batch, device_count)
+            state, losses = p_train(state, shard_batch)
 
-        # Emit placeholder PGN snapshots at the configured cadence.
-        if games_played >= run_cfg.pgn_every_games * next_pgn_index:
-            next_pgn_index += 1
-            _write_pgn_snapshot(paths, run_cfg.name, next_pgn_index)
+            # Log scalar metrics for the first replica.
+            if (step + 1) % run_cfg.log_every_steps == 0:
+                losses_host = jax.tree_util.tree_map(
+                    lambda x: float(jax.device_get(x)), losses
+                )
+                metrics = Metrics(
+                    step=step + 1,
+                    loss_total=losses_host.total,
+                    loss_policy=losses_host.policy,
+                    loss_value=losses_host.value,
+                    value_mean=0.0,
+                    entropy_mean=0.0,
+                )
+                write_metrics_snapshot(paths, metrics)
 
-        # Sample a batch and run a training step.
-        batch_size = train_cfg.batch_size_per_device * device_count
-        sample_key = rng_stream.key_for_step(Step(step + 10_000))
-        batch = replay.sample_batch(sample_key, batch_size)
-        shard_batch = _split_batch(batch, device_count)
-        state, losses = p_train(state, shard_batch)
+            # Persist checkpoints on schedule.
+            if (step + 1) % run_cfg.checkpoint_every_steps == 0:
+                state_host = jax.device_get(state)
+                save_checkpoint(manager, state_host)
 
-        # Log scalar metrics for the first replica.
-        if (step + 1) % run_cfg.log_every_steps == 0:
-            losses_host = jax.tree_util.tree_map(
-                lambda x: float(jax.device_get(x)), losses
-            )
-            metrics = Metrics(
-                step=step + 1,
-                loss_total=losses_host.total,
-                loss_policy=losses_host.policy,
-                loss_value=losses_host.value,
-                value_mean=0.0,
-                entropy_mean=0.0,
-            )
-            write_metrics_snapshot(paths, metrics)
-
-        # Persist checkpoints on schedule.
-        if (step + 1) % run_cfg.checkpoint_every_steps == 0:
-            state_host = jax.device_get(state)
-            save_checkpoint(manager, state_host)
-
-    # Normal completion.
-    _write_stop_event(paths, run_id, run_cfg.name, "complete")
+        # Normal completion.
+        _write_stop_event(paths, run_id, run_cfg.name, "complete")
+    finally:
+        manager.wait_until_finished()
 
 
 def _eval(config: dict[str, TomlValue], paths: RunPaths, run_id: str) -> None:
