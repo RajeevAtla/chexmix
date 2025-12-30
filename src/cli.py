@@ -467,6 +467,20 @@ def _game_result(outcome: Array, player_id: Array, valid: Array) -> str:
     return "1-0" if winner_is_white else "0-1"
 
 
+def _select_pgn_game(traj: Trajectory) -> int | None:
+    """Select a game index with at least one valid, legal move."""
+    batch = traj.actions.shape[0]
+    for idx in range(batch):
+        valid = traj.valid[idx]
+        if not bool(jnp.any(valid)):
+            continue
+        first_idx = int(jnp.argmax(valid.astype(jnp.int32)))
+        action = int(traj.actions[idx, first_idx])
+        if bool(traj.legal_action_mask[idx, first_idx, action]):
+            return idx
+    return None
+
+
 def _write_pgn_snapshot(
     paths: RunPaths, run_name: str, game_index: int, traj: Trajectory
 ) -> None:
@@ -478,22 +492,34 @@ def _write_pgn_snapshot(
         game_index: Sequence number for naming.
         traj: Trajectory batch containing actions and outcomes.
     """
-    actions = traj.actions[0]
-    valid = traj.valid[0]
-    player_id = traj.player_id[0]
-    outcome = traj.outcome[0]
-    legal_mask = traj.legal_action_mask[0]
+    game_idx = _select_pgn_game(traj)
+    stop_reason = "no_valid_steps"
     moves: list[str] = []
-    for idx in range(actions.shape[0]):
-        if not bool(valid[idx]):
-            break
-        action = int(actions[idx])
-        if not bool(legal_mask[idx, action]):
-            break
-        coord = _move_to_coord(decode_action(action))
-        if coord is None:
-            break
-        moves.append(coord)
+    if game_idx is not None:
+        actions = traj.actions[game_idx]
+        valid = traj.valid[game_idx]
+        player_id = traj.player_id[game_idx]
+        outcome = traj.outcome[game_idx]
+        legal_mask = traj.legal_action_mask[game_idx]
+        stop_reason = "terminal"
+        for idx in range(actions.shape[0]):
+            if not bool(valid[idx]):
+                stop_reason = "terminal"
+                break
+            action = int(actions[idx])
+            if not bool(legal_mask[idx, action]):
+                stop_reason = "illegal_action"
+                break
+            coord = _move_to_coord(decode_action(action))
+            if coord is None:
+                stop_reason = "out_of_bounds"
+                break
+            moves.append(coord)
+    else:
+        # Default to first game for result token computation.
+        valid = traj.valid[0]
+        player_id = traj.player_id[0]
+        outcome = traj.outcome[0]
 
     headers = PgnHeaders(
         event=run_name,
@@ -504,6 +530,8 @@ def _write_pgn_snapshot(
         black="selfplay",
         result=_game_result(outcome, player_id, valid),
     )
+    if stop_reason != "terminal":
+        moves = [*moves, f"{{{stop_reason}}}"]
     pgn = format_pgn(headers, moves=moves)
     filename = f"game_{game_index:010d}.pgn"
     write_pgn_file(paths.games_dir / filename, pgn)

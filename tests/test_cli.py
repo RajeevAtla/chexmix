@@ -26,6 +26,7 @@ from cli import (
     _parse_env_config,
     _parse_run_config,
     _run_id,
+    _select_pgn_game,
     _split_batch,
     _train,
     _write_bootstrap_artifacts,
@@ -389,19 +390,21 @@ def test_pgn_snapshot_stops_on_illegal_mask(tmp_path: Path) -> None:
     )
     paths.games_dir.mkdir(parents=True, exist_ok=True)
     traj = Trajectory(
-        obs=jnp.zeros((1, 1, 8, 8, 119), dtype=jnp.float32),
-        policy_targets=jnp.zeros((1, 1, 4672), dtype=jnp.float32),
-        actions=jnp.zeros((1, 1), dtype=jnp.int32),
-        legal_action_mask=jnp.zeros((1, 1, 4672), dtype=jnp.bool_),
-        player_id=jnp.zeros((1, 1), dtype=jnp.int32),
-        valid=jnp.ones((1, 1), dtype=jnp.bool_),
-        outcome=jnp.zeros((1, 1), dtype=jnp.float32),
+        obs=jnp.zeros((1, 2, 8, 8, 119), dtype=jnp.float32),
+        policy_targets=jnp.zeros((1, 2, 4672), dtype=jnp.float32),
+        actions=jnp.zeros((1, 2), dtype=jnp.int32),
+        legal_action_mask=jnp.array(
+            [[[True] + [False] * 4671, [False] * 4672]], dtype=jnp.bool_
+        ),
+        player_id=jnp.zeros((1, 2), dtype=jnp.int32),
+        valid=jnp.ones((1, 2), dtype=jnp.bool_),
+        outcome=jnp.zeros((1, 2), dtype=jnp.float32),
     )
     _write_pgn_snapshot(paths, "demo", 1, traj)
     content = (paths.games_dir / "game_0000000001.pgn").read_text(
         encoding="utf-8"
     )
-    assert "1. " not in content
+    assert "{illegal_action}" in content
 
 
 def test_pgn_snapshot_stops_on_out_of_bounds_move(tmp_path: Path) -> None:
@@ -428,7 +431,71 @@ def test_pgn_snapshot_stops_on_out_of_bounds_move(tmp_path: Path) -> None:
     content = (paths.games_dir / "game_0000000001.pgn").read_text(
         encoding="utf-8"
     )
-    assert "1. " not in content
+    assert "{out_of_bounds}" in content
+
+
+def test_select_pgn_game_picks_valid() -> None:
+    """_select_pgn_game prefers games with legal valid moves."""
+    traj = Trajectory(
+        obs=jnp.zeros((2, 1, 8, 8, 119), dtype=jnp.float32),
+        policy_targets=jnp.zeros((2, 1, 4672), dtype=jnp.float32),
+        actions=jnp.zeros((2, 1), dtype=jnp.int32),
+        legal_action_mask=jnp.zeros((2, 1, 4672), dtype=jnp.bool_),
+        player_id=jnp.zeros((2, 1), dtype=jnp.int32),
+        valid=jnp.array([[1], [1]], dtype=jnp.bool_),
+        outcome=jnp.zeros((2, 1), dtype=jnp.float32),
+    )
+    traj = Trajectory(
+        obs=traj.obs,
+        policy_targets=traj.policy_targets,
+        actions=traj.actions,
+        legal_action_mask=traj.legal_action_mask.at[1, 0, 0].set(True),
+        player_id=traj.player_id,
+        valid=traj.valid,
+        outcome=traj.outcome,
+    )
+    assert _select_pgn_game(traj) == 1
+
+
+def test_select_pgn_game_skips_no_valid_steps() -> None:
+    """_select_pgn_game returns None when no valid steps exist."""
+    traj = Trajectory(
+        obs=jnp.zeros((1, 1, 8, 8, 119), dtype=jnp.float32),
+        policy_targets=jnp.zeros((1, 1, 4672), dtype=jnp.float32),
+        actions=jnp.zeros((1, 1), dtype=jnp.int32),
+        legal_action_mask=jnp.ones((1, 1, 4672), dtype=jnp.bool_),
+        player_id=jnp.zeros((1, 1), dtype=jnp.int32),
+        valid=jnp.zeros((1, 1), dtype=jnp.bool_),
+        outcome=jnp.zeros((1, 1), dtype=jnp.float32),
+    )
+    assert _select_pgn_game(traj) is None
+
+
+def test_pgn_snapshot_no_valid_steps(tmp_path: Path) -> None:
+    """PGN snapshot records no-valid-steps reason."""
+    paths = RunPaths(
+        root=tmp_path,
+        checkpoints=tmp_path / "checkpoints",
+        metrics_dir=tmp_path / "metrics",
+        games_dir=tmp_path / "games",
+        events_toml=tmp_path / "events.toml",
+        config_toml=tmp_path / "config.toml",
+    )
+    paths.games_dir.mkdir(parents=True, exist_ok=True)
+    traj = Trajectory(
+        obs=jnp.zeros((1, 1, 8, 8, 119), dtype=jnp.float32),
+        policy_targets=jnp.zeros((1, 1, 4672), dtype=jnp.float32),
+        actions=jnp.zeros((1, 1), dtype=jnp.int32),
+        legal_action_mask=jnp.ones((1, 1, 4672), dtype=jnp.bool_),
+        player_id=jnp.zeros((1, 1), dtype=jnp.int32),
+        valid=jnp.zeros((1, 1), dtype=jnp.bool_),
+        outcome=jnp.zeros((1, 1), dtype=jnp.float32),
+    )
+    _write_pgn_snapshot(paths, "demo", 1, traj)
+    content = (paths.games_dir / "game_0000000001.pgn").read_text(
+        encoding="utf-8"
+    )
+    assert "{no_valid_steps}" in content
 
 
 def test_split_batch_and_combine_traj() -> None:
