@@ -1,0 +1,9 @@
+[event_0001]
+event = "start"
+git_sha = "a37a97a3aaad013fb6ffc73954b3de7daf356f65"
+host = "gpu028.amarel.rutgers.edu"
+platform = "Linux-3.10.0-1160.119.1.el7.x86_64-x86_64-with-glibc2.39"
+python = "3.13.9"
+run_id = "20251229_022333_default"
+run_name = "default"
+started_utc = "2025-12-29T02:23:33.883766+00:00"
