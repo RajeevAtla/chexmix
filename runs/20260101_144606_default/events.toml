@@ -1,0 +1,16 @@
+[event_0001]
+event = "start"
+git_sha = "56b6c78e00c99fe64ad881412c14b763880a586b"
+host = "gpu016.amarel.rutgers.edu"
+platform = "Linux-3.10.0-1160.119.1.el7.x86_64-x86_64-with-glibc2.39"
+python = "3.13.9"
+run_id = "20260101_144606_default"
+run_name = "default"
+started_utc = "2026-01-01T14:46:06.891129+00:00"
+
+[event_0002]
+event = "stop"
+reason = "time"
+run_id = "20260101_144606_default"
+run_name = "default"
+stopped_utc = "2026-01-02T02:46:17.709966+00:00"

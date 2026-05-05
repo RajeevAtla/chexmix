@@ -1,0 +1,9 @@
+[Event "default"]
+[Site "local"]
+[Date "2025-12-30"]
+[Round "237"]
+[White "selfplay"]
+[Black "selfplay"]
+[Result "1/2-1/2"]
+
+1. {out_of_bounds} 1/2-1/2

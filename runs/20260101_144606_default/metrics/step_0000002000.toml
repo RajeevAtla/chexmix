@@ -1,0 +1,6 @@
+entropy_mean = 1.4452877044677734
+loss_policy = 1.7580097913742065
+loss_total = 7.1444830894470215
+loss_value = 0.9921875
+step = 2000
+value_mean = -1.0
